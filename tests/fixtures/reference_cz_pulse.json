@@ -1,0 +1,44 @@
+{
+  "pulse_npy": "reference_cz_pulse.npy",
+  "pulse_dt_ns": 1.0,
+  "n_channels": 3,
+  "bandwidth_mhz": 80.0,
+  "smoother_type": "gaussian",
+  "target_gate": "cz",
+  "line_response": null,
+  "grape_f": 0.990329921245575,
+  "profile": {
+    "qubit_pair": [
+      4,
+      5
+    ],
+    "n_levels": 3,
+    "t1_ns_q1": 30000,
+    "t1_ns_q2": 30000,
+    "t2_ns_q1": 25000,
+    "t2_ns_q2": 25000,
+    "n_thermal_q1": 0.0,
+    "n_thermal_q2": 0.0,
+    "freq_ghz_q1": 4.85,
+    "freq_ghz_q2": 5.05,
+    "anharm_ghz_q1": -0.2,
+    "anharm_ghz_q2": -0.2,
+    "g_max_mhz": 12.0,
+    "omega_max_mhz": 50.0,
+    "chi_zz_mhz": 0.0,
+    "native_cz_fidelity": 0.988,
+    "native_cz_duration_ns": 150.0,
+    "notes": []
+  },
+  "f_proc_double": 0.9903289879893988,
+  "leakage_double": 0.000321576488127695,
+  "consensus": {
+    "blessed_f_proc": 0.9903289879893988,
+    "agreeing_solvers": [
+      "liouville",
+      "optimizer",
+      "qutip"
+    ],
+    "rebless_cmd": "python tests/test_reproducibility.py --regen"
+  }
+}

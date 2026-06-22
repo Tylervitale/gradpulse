@@ -1,0 +1,27 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it as below."
+type: software
+title: "gradpulse: A differentiable, multi-solver-validated, open-system pulse optimizer for predictive superconducting-gate fidelities"
+abstract: "gradpulse is an open-source Python library that designs and validates control pulses for entangling two-qubit gates on superconducting qubits. It runs GRAPE on PyTorch autodifferentiation through an open-system Lindblad master equation (decoherence in the loop), enforces a triple-solver validation discipline, and anchors predicted fidelities to measured device coherence budgets."
+authors:
+  - given-names: Tyler
+    family-names: Vitale
+    orcid: "https://orcid.org/0009-0003-6156-0212"
+    affiliation: "Pure State Labs Inc."
+    website: "https://purestatelabs.com"
+version: 0.6.0
+date-released: "2026-06-22"
+license: MIT
+repository-code: "https://github.com/PureStateLabs/gradpulse"
+url: "https://purestatelabs.com"
+# doi: 10.5281/zenodo.XXXXXXX   # uncomment and fill in after Zenodo mints the DOI
+keywords:
+  - quantum computing
+  - quantum optimal control
+  - GRAPE
+  - PyTorch
+  - superconducting qubits
+  - pulse-level control
+  - open quantum systems
+  - two-qubit gates
+  - differentiable programming

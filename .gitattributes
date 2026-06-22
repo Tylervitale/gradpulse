@@ -1,0 +1,10 @@
+# Canonical line endings: store and check out text as LF on every platform.
+# The CI runs on Linux; pinning LF keeps diffs clean and avoids CRLF churn
+# when the repo is cloned on Windows.
+* text=auto eol=lf
+
+# Binary assets: never line-ending-normalize these.
+*.png binary
+*.npy binary
+*.pdf binary
+*.gz  binary

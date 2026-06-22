@@ -1,0 +1,76 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "gradpulse"
+dynamic = ["version"]
+description = "A differentiable, multi-solver-validated, open-system pulse optimizer for predictive superconducting-gate fidelities"
+readme = "README.md"
+requires-python = ">=3.10"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [{ name = "Pure State Labs Inc.", email = "info@purestatelabs.com" }]
+maintainers = [{ name = "Pure State Labs Inc.", email = "info@purestatelabs.com" }]
+keywords = ["quantum-computing", "optimal-control", "GRAPE", "pytorch", "superconducting-qubits"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Science/Research",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Scientific/Engineering :: Physics",
+    "Operating System :: OS Independent",
+]
+dependencies = [
+    "torch>=2.0",
+    "numpy>=1.23",
+    "rich>=13.0",
+]
+
+[project.optional-dependencies]
+validate = ["qutip>=5.0"]                # independent QuTiP cross-check
+viz = ["matplotlib>=3.6"]                # paper figure (examples/make_paper_figure.py)
+sparse = ["scipy>=1.10"]                 # Krylov state-vector eval past the dense wall (MultiQubitOptimizer.process_fidelity_sparse)
+braket = ["amazon-braket-sdk>=1.70"]     # hardware on-ramp (gradpulse.braket_bridge)
+openpulse = ["openpulse>=1.0"]           # OpenPulse 3.0 export + round-trip parser
+benchmark = ["qutip-qtrl>=0.1"]          # head-to-head GRAPE benchmark (gradpulse.benchmark)
+
+[project.urls]
+Repository = "https://github.com/PureStateLabs/gradpulse"
+Issues = "https://github.com/PureStateLabs/gradpulse/issues"
+Homepage = "https://purestatelabs.com"
+Documentation = "https://github.com/PureStateLabs/gradpulse/blob/main/API_REFERENCE.md"
+
+[project.scripts]
+gradpulse = "gradpulse.__main__:main"
+
+[tool.pytest.ini_options]
+# importlib import mode: collect test modules without prepending their dir (or the
+# CWD) to sys.path. This makes `pytest` and `python -m pytest` behave identically and
+# removes the accidental CWD-on-path that let bare-module imports (`import validate`)
+# pass locally while failing on CI. Tests must use `from gradpulse import ...`.
+addopts = "--import-mode=importlib"
+markers = [
+    "slow: heavier checks (open-system multi-qubit + QuTiP cross-check); deselect with -m 'not slow'",
+]
+filterwarnings = [
+    # The representative-defaults guardrail fires by design whenever a test builds a
+    # default profile; it is asserted explicitly in tests/test_calibration.py, so the
+    # incidental ones elsewhere are silenced here to keep the run clean.
+    "ignore::gradpulse.profiles.RepresentativeDefaultsWarning",
+]
+
+# Single source of truth for the version: src/gradpulse/__init__.py (__version__).
+# This matches __main__.py._read_version(), so `gradpulse --version` and the installed
+# package metadata can never drift apart.
+[tool.setuptools.dynamic]
+version = { attr = "gradpulse.__version__" }
+
+# src/ layout: the importable `gradpulse` package lives under src/gradpulse/, kept out
+# of the repo root so conftest.py, tests/, and examples/ are never importable as part
+# of the package, and there is no CWD-on-path ambiguity for `import gradpulse`.
+[tool.setuptools.packages.find]
+where = ["src"]

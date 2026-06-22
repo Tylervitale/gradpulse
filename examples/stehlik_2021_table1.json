@@ -1,0 +1,22 @@
+{
+  "name": "Stehlik 2021 (IBM) -- tunable-coupler CZ, all 11 pairs (Table I)",
+  "provenance": {
+    "citation": "J. Stehlik, D. M. Zajac, D. L. Underwood, T. Phung, J. Blair, S. Carnevale, D. Klaus, G. A. Keefe, A. Carniol, M. Kumph, M. Steffen, O. E. Dial, \"Tunable Coupling Architecture for Fixed-Frequency Transmon Superconducting Qubits\", Phys. Rev. Lett. 127, 080505 (2021)",
+    "doi": "10.1103/PhysRevLett.127.080505",
+    "url": "https://arxiv.org/abs/2101.07746",
+    "notes": "Fixed-frequency transmons coupled by a flux-tunable bus (BBQ); CZ activated by tuning the bus to turn on an effective ZZ/exchange interaction. Table I summarizes 11 qubit pairs. EVERY number below is quoted verbatim from Table I: Coupling g_Q,bus/2pi (MHz), qubit-qubit Detuning (MHz), Average T1 (us), Average T2 (us), Gate Time (ns), Error Per Gate (EPG) and Error Per Clifford (EPC) from interleaved randomized benchmarking. 'Average' T1/T2 are the per-pair averages over the two qubits as the paper reports them; we apply each to BOTH qubits symmetrically (only one value per pair is published). The T2 measurement convention is not stated in the text; its magnitude (35-151 us) is consistent with a Hahn-echo T2 for fixed-frequency transmons. The headline gate is pair 1: 46 ns, EPG 0.0015+/-0.0001 (F_avg=99.85%). Absolute qubit frequencies and anharmonicities are NOT published per pair, so the gradpulse comparison uses the ANALYTIC coherence floor (2 t_g/5) sum_q(1/T1+1/Tphi), which depends only on the published T1/T2 and gate time -- not the GRAPE floor, which would require assumed Hamiltonian parameters. Paper's own error attribution (Fig. 3 / text): at short gate times error rises from loss of adiabaticity (a COHERENT error), at long gate times from qubit decoherence -- i.e. these gates are NOT uniformly coherence-limited. Pair 9 has T2=106 > 2*T1=92 us (T2 > 2 T1 is unphysical for a single consistent measurement); gradpulse clamps its pure-dephasing rate to zero (relaxation-only floor), the same honest handling as self-inconsistent calibration entries elsewhere."
+  },
+  "pairs": [
+    {"pair": 1,  "coupling_mhz": 110, "detuning_mhz": 351, "t1_us": 76,  "t2_us": 105, "gate_ns": 46,  "epg": 0.0015, "epg_err": 0.0001, "epc": 0.0029, "epc_err": 0.0001},
+    {"pair": 2,  "coupling_mhz": 110, "detuning_mhz": 398, "t1_us": 82,  "t2_us": 151, "gate_ns": 70,  "epg": 0.0019, "epg_err": 0.0002, "epc": 0.0039, "epc_err": 0.0003},
+    {"pair": 3,  "coupling_mhz": 110, "detuning_mhz": 324, "t1_us": 68,  "t2_us": 134, "gate_ns": 54,  "epg": 0.0018, "epg_err": 0.0001, "epc": 0.0037, "epc_err": 0.0002},
+    {"pair": 4,  "coupling_mhz": 110, "detuning_mhz": 503, "t1_us": 77,  "t2_us": 104, "gate_ns": 130, "epg": 0.0056, "epg_err": 0.0003, "epc": 0.0094, "epc_err": 0.0004},
+    {"pair": 5,  "coupling_mhz": 110, "detuning_mhz": 562, "t1_us": 86,  "t2_us": 113, "gate_ns": 81,  "epg": 0.0025, "epg_err": 0.0002, "epc": 0.0048, "epc_err": 0.0002},
+    {"pair": 6,  "coupling_mhz": 80,  "detuning_mhz": 136, "t1_us": 100, "t2_us": 124, "gate_ns": 63,  "epg": 0.0020, "epg_err": 0.0004, "epc": 0.0044, "epc_err": 0.0002},
+    {"pair": 7,  "coupling_mhz": 80,  "detuning_mhz": 145, "t1_us": 70,  "t2_us": 77,  "gate_ns": 86,  "epg": 0.0035, "epg_err": 0.0004, "epc": 0.0055, "epc_err": 0.0003},
+    {"pair": 8,  "coupling_mhz": 80,  "detuning_mhz": 9,   "t1_us": 80,  "t2_us": 107, "gate_ns": 136, "epg": 0.006,  "epg_err": 0.002,  "epc": 0.011,  "epc_err": 0.001},
+    {"pair": 9,  "coupling_mhz": 80,  "detuning_mhz": 166, "t1_us": 46,  "t2_us": 106, "gate_ns": 113, "epg": 0.0046, "epg_err": 0.0007, "epc": 0.0088, "epc_err": 0.0004},
+    {"pair": 10, "coupling_mhz": 80,  "detuning_mhz": 89,  "t1_us": 63,  "t2_us": 80,  "gate_ns": 56,  "epg": 0.005,  "epg_err": 0.002,  "epc": 0.007,  "epc_err": 0.001},
+    {"pair": 11, "coupling_mhz": 80,  "detuning_mhz": 160, "t1_us": 24,  "t2_us": 35,  "gate_ns": 130, "epg": 0.0049, "epg_err": 0.0006, "epc": 0.0085, "epc_err": 0.0003}
+  ]
+}

@@ -1,0 +1,37 @@
+{
+  "name": "Sung 2021 CZ (60 ns)",
+  "architecture": "parametric",
+  "provenance": {
+    "citation": "Y. Sung et al., \"Realization of High-Fidelity CZ and ZZ-Free iSWAP Gates with a Tunable Coupler\", Phys. Rev. X 11, 021058 (2021)",
+    "doi": "10.1103/PhysRevX.11.021058",
+    "url": "https://journals.aps.org/prx/abstract/10.1103/PhysRevX.11.021058",
+    "notes": "Tunable-coupler (parametric) CZ, 60 ns. Measured F_avg = 99.76% by interleaved RB; the authors report the gate is close to its T1 limit (~99.85%), i.e. coherence-limited -- so a pure T1/T_phi floor is expected to reproduce the measured number, not merely bound it. Device parameters here are the published representative values used for the gradpulse decoherence-model check; they reproduce the numbers in the prior hardcoded validate_sung_cz()."
+  },
+  "qubits": {
+    "0": {"freq_ghz": 4.16, "anharm_ghz": -0.220, "t1_ns": 60000.0, "t2_ns": 103000.0},
+    "1": {"freq_ghz": 4.00, "anharm_ghz": -0.210, "t1_ns": 30000.0, "t2_ns": 16000.0}
+  },
+  "qubit_pair": [0, 1],
+  "device": {
+    "g_max_mhz": 45.0,
+    "omega_max_mhz": 50.0
+  },
+  "gate": {
+    "kind": "cz",
+    "n_slices": 60,
+    "dt_ns": 1.0,
+    "bandwidth_mhz": 200.0,
+    "use_drag": true,
+    "drag_order": 2,
+    "n_channels": 4,
+    "precision": "double",
+    "n_seeds": 4,
+    "iterations": 500
+  },
+  "validation": {
+    "measured_f_avg": 0.9976,
+    "t1_limit_f_avg": 0.9985,
+    "coherence_limited": true,
+    "ratio_band": [0.5, 1.5]
+  }
+}

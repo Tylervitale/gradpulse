@@ -1,0 +1,27 @@
+{
+  "name": "Stehlik 2021 CZ (IBM, pair 11 -- the decoherence-dominated pair, 130 ns)",
+  "architecture": "parametric",
+  "provenance": {
+    "citation": "J. Stehlik, D. M. Zajac, D. L. Underwood, T. Phung, J. Blair, S. Carnevale, D. Klaus, G. A. Keefe, A. Carniol, M. Kumph, M. Steffen, O. E. Dial, \"Tunable Coupling Architecture for Fixed-Frequency Transmon Superconducting Qubits\", Phys. Rev. Lett. 127, 080505 (2021)",
+    "doi": "10.1103/PhysRevLett.127.080505",
+    "url": "https://arxiv.org/abs/2101.07746",
+    "notes": "IBM fixed-frequency transmons coupled by a flux-tunable bus; CZ via a tuned-on effective ZZ/exchange interaction. ALL coherence/timing/error numbers are quoted from Table I, pair 11: Average T1=24 us, Average T2=35 us (applied symmetrically to both qubits -- Table I gives one average per pair; T2 convention unstated, magnitude consistent with Hahn-echo), Gate Time=130 ns, Error Per Gate=0.0049+/-0.0006 by interleaved RB (so measured_f_avg = 1 - 0.0049 = 0.9951). WHY PAIR 11, AND WHY THIS IS NOT CHERRY-PICKING: across all 11 published pairs gradpulse's floor is a strict lower bound (see examples/stehlik_predict_vs_measured.py: floor <= measured on 11/11, median 0.37x). Pair 11 is the ONE pair selected by PHYSICS -- it has both the shortest coherence (T1=24/T2=35 us, the shortest in Table I) AND a long gate (130 ns) -- making it the only decoherence-dominated point, INDEPENDENT of its gradpulse ratio. The paper's own error attribution agrees: short-gate error is loss of adiabaticity (coherent), long-gate error is decoherence; the fast well-coherent pairs (1-6) sit at 0.3-0.4x, i.e. mostly coherent/control error, which gradpulse correctly does NOT claim to predict. FLOOR METHOD = ANALYTIC: Stehlik does not publish per-pair frequencies/anharmonicities, so the GRAPE floor would require assumed Hamiltonian parameters. The validated closed-form coherence limit (2 t_g/5) sum_q(1/T1+1/T_phi) depends ONLY on the published T1/T2 and gate time, so it is the honest, fully source-derived metric here (gives 1.05x). The freq_ghz/anharm_ghz below are REPRESENTATIVE (5.0/5.16 GHz preserves the paper's 160 MHz pair detuning; anharm -0.33 GHz is a typical fixed-frequency transmon value) and are NOT used by the analytic floor -- they exist only so the profile builds; do not read them as device claims."
+  },
+  "qubits": {
+    "0": {"freq_ghz": 5.00, "anharm_ghz": -0.33, "t1_ns": 24000.0, "t2_ns": 35000.0},
+    "1": {"freq_ghz": 5.16, "anharm_ghz": -0.33, "t1_ns": 24000.0, "t2_ns": 35000.0}
+  },
+  "qubit_pair": [0, 1],
+  "device": {},
+  "gate": {
+    "kind": "cz",
+    "n_slices": 130,
+    "dt_ns": 1.0
+  },
+  "validation": {
+    "measured_f_avg": 0.9951,
+    "coherence_limited": true,
+    "ratio_band": [0.5, 1.5],
+    "floor_method": "analytic"
+  }
+}

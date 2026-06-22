@@ -1,0 +1,36 @@
+# Full development environment for gradpulse: every optional extra in
+# pyproject.toml, so a single command runs the entire test suite with zero
+# skips:
+#
+#     pip install -r requirements.txt
+#
+# This is the "I want it all" path, including heavier optional pieces (the
+# AWS Braket SDK). For just the core optimizer, `pip install -e .` is enough;
+# to add only the extras you need, use pip's extras syntax instead of this
+# file, e.g. `pip install -e ".[validate,viz]"` (see pyproject.toml).
+#
+# Note: this installs the default torch build. For a specific CPU- or
+# CUDA-pinned wheel, install torch first from https://pytorch.org, then
+# run the command above.
+
+# --- core (required to run the optimizer) ---
+torch>=2.0
+numpy>=1.23
+
+# --- independent validation cross-checks (gradpulse.validate, gradpulse.benchmark) ---
+qutip>=5.0
+qutip-qtrl>=0.1
+
+# --- sparse/Krylov state-vector eval past the dense wall
+#     (MultiQubitOptimizer.process_fidelity_sparse) ---
+scipy>=1.10
+
+# --- plotting (gradpulse.viz, examples/make_paper_figure.py) ---
+matplotlib>=3.6
+
+# --- hardware export / on-ramp (gradpulse.braket_bridge, gradpulse.openpulse_export) ---
+amazon-braket-sdk>=1.70
+openpulse>=1.0
+
+# --- tests ---
+pytest>=7.0

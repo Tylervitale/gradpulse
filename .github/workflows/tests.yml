@@ -1,0 +1,67 @@
+name: tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+# Cap BLAS/OpenMP thread pools for the whole workflow. The heavier open-system
+# multi-qubit (`slow`) tests can otherwise oversubscribe the runner's CPUs; this
+# replaces the equivalent cap that the (local-only, untracked) conftest.py applies
+# on a dev machine.
+env:
+  OMP_NUM_THREADS: "2"
+  MKL_NUM_THREADS: "2"
+  OPENBLAS_NUM_THREADS: "2"
+  NUMEXPR_NUM_THREADS: "2"
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.10", "3.11", "3.12", "3.13"]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+
+      - name: Install (CPU-only torch keeps CI fast)
+        run: |
+          python -m pip install --upgrade pip
+          pip install torch --index-url https://download.pytorch.org/whl/cpu
+          pip install -e ".[sparse]" pytest    # scipy: actually exercise the Krylov sparse path
+
+      - name: Run test suite
+        run: pytest tests/ -v
+
+  cross-check:
+    # Separate job so the independent QuTiP cross-check actually runs: the
+    # cross-check, leakage-aware-RB, and reproducibility tests importorskip
+    # qutip, so the matrix job above skips them. Pinned to one Python version
+    # where QuTiP wheels are reliable.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install with the validation extra (adds QuTiP)
+        run: |
+          python -m pip install --upgrade pip
+          pip install torch --index-url https://download.pytorch.org/whl/cpu
+          pip install -e ".[validate,sparse]" pytest
+
+      - name: Run full suite incl. independent QuTiP cross-check
+        run: pytest tests/ -v
