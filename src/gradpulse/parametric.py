@@ -283,7 +283,8 @@ class ParametricCZOptimizer(ParametricCZAnalysisMixin):
                  coupler_g_linewidth_mhz: Optional[float] = None,
                  line_response=None,
                  target_gate: str = "cz",
-                 precision: str = "single"):
+                 precision: str = "single",
+                 dlp_rules: Optional[list] = None):
         """drag_order:
             0 - off (no quadrature correction)
             1 - 1st-order DRAG: v_y = -du/dt / alpha
@@ -439,6 +440,8 @@ class ParametricCZOptimizer(ParametricCZAnalysisMixin):
         else:
             self.target_gate = "custom"
         self.u_target_4x4 = self._build_target_unitary(target_gate)
+
+        self.dlp_rules = dlp_rules if dlp_rules is not None else []
 
     def _build_target_unitary(self, target_gate) -> torch.Tensor:
         """Target unitary in the 4D computational basis {|00>,|01>,|10>,|11>}.
@@ -1332,6 +1335,19 @@ class ParametricCZOptimizer(ParametricCZAnalysisMixin):
             if bandwidth_penalty > 0.0:
                 viol = self._bandwidth_violation(x_clamped, dt_ns, bandwidth_filter_mhz)
                 loss = loss + bandwidth_penalty * viol.mean()
+
+            # Apply DLP rules dynamically inside LBFGS step
+            if self.dlp_rules:
+                for rule in self.dlp_rules:
+                    # Provide an accessible set of metrics for rules to evaluate
+                    metrics = {
+                        "fidelity": fids.mean(),
+                        "infidelity": 1.0 - fids.mean(),
+                        "leakage": self._leakage(rho_final).mean() if "rho_final" in locals() else torch.tensor(0.0, device=DEVICE),
+                        "bandwidth_violation": viol.mean() if "viol" in locals() else self._bandwidth_violation(x_clamped, dt_ns, bandwidth_filter_mhz).mean(),
+                    }
+                    loss = loss + rule(metrics)
+
             loss.backward()
             last_fid[0] = float(fids.item())
             return loss
@@ -1641,6 +1657,18 @@ class ParametricCZOptimizer(ParametricCZAnalysisMixin):
             if bandwidth_penalty > 0.0:
                 viol = self._bandwidth_violation(x_clamped, dt_ns, bandwidth_filter_mhz)
                 loss = loss + bandwidth_penalty * viol.mean()
+
+            # Apply DLP rules dynamically inside Adam loop
+            if self.dlp_rules:
+                for rule in self.dlp_rules:
+                    # Provide an accessible set of metrics for rules to evaluate
+                    metrics = {
+                        "fidelity": fids.mean(),
+                        "infidelity": 1.0 - fids.mean(),
+                        "leakage": self._leakage(rho_final).mean() if "rho_final" in locals() else torch.tensor(0.0, device=DEVICE),
+                        "bandwidth_violation": viol.mean() if "viol" in locals() else self._bandwidth_violation(x_clamped, dt_ns, bandwidth_filter_mhz).mean(),
+                    }
+                    loss = loss + rule(metrics)
 
             # divergence guard: a non-finite loss/gradient would poison every seed
             # via the shared scalar loss, so roll back to the last finite state.

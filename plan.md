@@ -55,7 +55,7 @@ This document details the architectural roadmap and implementation steps require
   - Take the ideal pulse envelope output by GRAPE and pre-distort it against the user-supplied `line_response` kernel.
   - Add a feedback loop that simulates the forward-propagated distorted pulse to minimize the residual error between the target shape and the received shape at the qubit plane.
 
-## 7. Differentiable Logical Programming (DLP)
+## 7. Differentiable Logical Programming (DLP) [x]
 **Objective:** Embed soft logical constraints and rule-based reasoning into the continuous GRAPE optimization.
 **Implementation Steps:**
 - **Module:** Create `src/gradpulse/dlp.py`
