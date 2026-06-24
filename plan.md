@@ -46,7 +46,7 @@ This document details the architectural roadmap and implementation steps require
   - Implement a greedy or integer-linear-programming (ILP) based scheduler that packs pulses as densely as possible.
   - Incorporate constraint margins (e.g., "drive channels must remain off for 2ns before phase shifts").
 
-## 6. The Cable Distortion Hack: Iterative Deconvolution (Pre-distortion)
+## 6. The Cable Distortion Hack: Iterative Deconvolution (Pre-distortion) [x]
 **Objective:** Actively invert the measured transfer functions of cryogenic wiring and control lines to pre-distort ideal pulses.
 **Implementation Steps:**
 - **Module:** Create `src/gradpulse/distortion.py`
