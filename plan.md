@@ -81,3 +81,12 @@ This document details the architectural roadmap and implementation steps require
   - Implement spline-based downsampling to represent smooth waveform segments parametrically.
   - Implement Run-Length Encoding (RLE) and delta encoding for regions where the pulse amplitude is constant (e.g., idling periods or flat-tops).
   - Provide a strict decompression verifier to ensure the compressed pulse deviates from the target by no more than machine precision or a specified DAC resolution bound.
+
+## 10. Zero-Noise Extrapolation (ZNE)
+**Objective:** Implement Zero-Noise Extrapolation as an error mitigation technique to estimate noise-free expectation values from noisy pulse executions.
+**Implementation Steps:**
+- **Module:** Create `src/gradpulse/mitigation.py`
+- **Features:**
+  - Implement noise scaling functions, such as pulse stretching (time-scaling) and unitary folding (local or global), to deliberately increase the noise level in the system while preserving the logical operation.
+  - Implement various extrapolation models (e.g., linear, polynomial, exponential, Richardson) to fit the measured expectation values at different noise scale factors.
+  - Create an interface to seamlessly apply ZNE to any quantum operation or pulse sequence, automatically managing the scheduling of scaled pulses and the final extrapolation.
