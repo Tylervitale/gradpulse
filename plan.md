@@ -20,7 +20,7 @@ This document details the architectural roadmap and implementation steps require
   - Modify the GRAPE loss function to explicitly target identity operations on spectator Hilbert spaces while allowing the optimizer to use these cancellation channels.
   - Implement a specific `ActiveCancellationOptimizer` that isolates the $ZZ$ and cross-resonance terms, applying local drives with a $\pi$-phase shift relative to the primary entangling drive to destructively interfere with the crosstalk Hamiltonian.
 
-## 3. Dependency Graphs
+## 3. Dependency Graphs [x]
 **Objective:** Model the temporal and logical dependencies between multiple quantum operations to ensure safe scheduling.
 **Implementation Steps:**
 - **Module:** Create `src/gradpulse/scheduling.py`
