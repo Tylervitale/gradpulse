@@ -1052,3 +1052,62 @@ class MultiQubitOptimizer:
             print(f" [gradpulse] divergence guard: rolled back {n_nonfinite} "
                   f"non-finite step(s); best result is finite and unaffected.")
         return best
+
+
+
+
+
+class ActiveCancellationOptimizer(MultiQubitOptimizer):
+    """Extension of MultiQubitOptimizer that actively cancels crosstalk on spectator
+    qubits by driving them with pulses that are phase-shifted (negative) copies of the
+    primary entangling drives.
+    """
+    def __init__(self, profile: MultiQubitProfile, **kwargs):
+        # Determine the spectator qubits based on the target_qubits provided in kwargs
+        # (or default to (0, 1) if not provided).
+        tq = kwargs.get("target_qubits", (0, 1))
+        # Ensure we can resolve target groups
+        if len(tq) > 0 and any(isinstance(q, (tuple, list)) for q in tq):
+            tqs = set(q for group in tq for q in (group if isinstance(group, (tuple, list)) else (group,)))
+        else:
+            tqs = set(int(q) for q in tq)
+
+        N = profile.n_qubits
+        spectator_qubits = [q for q in range(N) if q not in tqs]
+
+        # Merge spectator qubits into drive_qubits
+        drive_qubits = kwargs.get("drive_qubits", list(range(N)))
+        if drive_qubits is not None:
+            for sq in spectator_qubits:
+                if sq not in drive_qubits:
+                    drive_qubits.append(sq)
+            drive_qubits.sort()
+            kwargs["drive_qubits"] = drive_qubits
+
+        super().__init__(profile, **kwargs)
+        self.spectator_qubits = spectator_qubits
+
+    def _init_raw(self, n_slices, warm_start, s, g):
+        raw = super()._init_raw(n_slices, warm_start, s, g)
+
+        # Initialize spectator channels with a negative/phase-shifted guess
+        if self.n_drive_ch == 0:
+            return raw
+
+        with torch.no_grad():
+            for q in self.spectator_qubits:
+                if q in self.drive_qubits:
+                    ch = self.drive_qubits.index(q)
+                    # Find a primary target drive to invert against
+                    target_drives = [self.drive_qubits.index(t) for t in self.target_qubits if t in self.drive_qubits]
+                    primary_ch = target_drives[0] if target_drives else 0
+                    if primary_ch != ch:
+                        raw[..., ch] = -0.1 * raw[..., primary_ch]
+        return raw
+
+    # We do NOT override the loss function explicitly because `self.u_target`
+    # ALREADY enforces identity on spectator qubits (as built in `_build_target`),
+    # meaning the default GRAPE loss `(1 - F_proc)` naturally penalizes deviation
+    # from the identity on spectators. Active cancellation gives it the drive channels
+    # and the pi-phase-shifted initial parameter seeds to actively cancel that crosstalk
+    # rather than just scoring poorly on the baseline loss.

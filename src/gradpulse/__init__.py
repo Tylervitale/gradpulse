@@ -55,6 +55,7 @@ for one runnable script per feature.
 from .parametric import (
     ParametricCouplerProfile,
     ParametricCZOptimizer,
+    ActiveCancellationOptimizer as ParametricActiveCancellationOptimizer,
     RepresentativeDefaultsWarning,
 )
 from .crossresonance import (
@@ -64,6 +65,7 @@ from .crossresonance import (
 from .multiqubit import (
     MultiQubitProfile,
     MultiQubitOptimizer,
+    ActiveCancellationOptimizer,
 )
 from .diagnostics import pauli_transfer_matrix, channel_unitarity
 from .convenience import (optimize_cz, optimize_iswap, tunable_coupler_cz,
@@ -78,8 +80,9 @@ from .mps import ChainTEBD  # NumPy-only MPS evaluator; see gradpulse.mps
 
 __all__ = [
     "ParametricCouplerProfile", "ParametricCZOptimizer", "RepresentativeDefaultsWarning",
+    "ParametricActiveCancellationOptimizer",
     "CrossResonanceProfile", "CrossResonanceZXOptimizer",
-    "MultiQubitProfile", "MultiQubitOptimizer",
+    "MultiQubitProfile", "MultiQubitOptimizer", "ActiveCancellationOptimizer",
     "pauli_transfer_matrix", "channel_unitarity",
     "optimize_cz", "optimize_iswap", "tunable_coupler_cz", "coupler_in_loop_cz",
     "FourierBasis", "liouville_f_proc", "liouville_cr_f_proc",

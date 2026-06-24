@@ -11,7 +11,7 @@ This document details the architectural roadmap and implementation steps require
   - Implement dynamic Bloch sphere trajectories with color gradients representing time evolution or leakage probability.
   - Add spectrogram views of the synthesized pulses to visually debug frequency content and out-of-band energy.
 
-## 2. Active Crosstalk Cancellation (Negative Pulses)
+## 2. Active Crosstalk Cancellation (Negative Pulses) [x]
 **Objective:** Move beyond scoring crosstalk as a penalty and actively synthesize cancellation tones (negative or out-of-phase pulses) on spectator channels.
 **Implementation Steps:**
 - **Modules:** `src/gradpulse/multiqubit.py`, `src/gradpulse/parametric.py`

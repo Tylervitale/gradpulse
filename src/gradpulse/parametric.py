@@ -2006,3 +2006,34 @@ def _selftest():
 
 if __name__ == "__main__":
     _selftest()
+
+
+
+
+
+class ActiveCancellationOptimizer(ParametricCZOptimizer):
+    """Extension of ParametricCZOptimizer that actively cancels crosstalk on the pair.
+    Although ParametricCZOptimizer is already optimizing the 2-qubit pair, this
+    class provides explicit out-of-phase drive channel initialization to counteract
+    static ZZ/crosstalk or sideband collisions.
+    """
+    def __init__(self, profile=None, **kwargs):
+        # We enforce at least 6 channels if the user wants Stark shift compensation
+        # as part of cancellation, but default to the base class's channels and let
+        # the base class initialize.
+        super().__init__(profile, **kwargs)
+
+    def _init_raw(self, n_slices, warm_start, s, g):
+        raw = super()._init_raw(n_slices, warm_start, s, g)
+
+        # Drive channels are u1 (q1) and u2 (q2).
+        # For active cancellation, if one drive is active, we can initialize
+        # the other to have a small negative (out of phase) amplitude.
+        if self.n_channels >= 2:
+            with torch.no_grad():
+                # ch 0 -> q1 drive, ch 1 -> q2 drive
+                # Initialize q2's drive to negatively copy q1's drive for active
+                # cancellation initialization.
+                raw[..., 1] = -0.1 * raw[..., 0]
+
+        return raw
