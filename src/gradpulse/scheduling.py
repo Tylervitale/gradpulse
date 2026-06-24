@@ -1,3 +1,4 @@
+"""Scheduling and dependency graph module."""
 from __future__ import annotations
 
 import collections
@@ -49,8 +50,9 @@ def color_graph(edges: list[tuple[int, int]], nodes: list[int] | None = None) ->
     return colors
 
 def get_staggered_tuning_sets(edges: list[tuple[int, int]], nodes: list[int] | None = None) -> list[list[int]]:
-    """
-    Groups qubits into independent sets for staggered parallel tuning.
+    """Group qubits.
+
+    Groups into independent sets for staggered parallel tuning.
 
     Args:
         edges: List of edges representing the coupling graph.
@@ -132,6 +134,7 @@ class DependencyGraph:
     Nodes are operations, edges represent causal dependencies (must execute before).
     """
     def __init__(self):
+        """Initialize the dependency graph."""
         self.nodes: dict[str, OperationNode] = {}
         self.edges: collections.defaultdict[str, list[str]] = collections.defaultdict(list)
         self.in_degree: collections.defaultdict[str, int] = collections.defaultdict(int)

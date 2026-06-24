@@ -1,3 +1,4 @@
+"""Zero-Noise Extrapolation module."""
 import numpy as np
 from scipy.optimize import curve_fit
 from scipy.interpolate import interp1d
@@ -92,8 +93,9 @@ def fit_exponential(scales, values):
         return fit_linear(scales, values)
 
 def fit_richardson(scales, values):
-    """
-    Richardson extrapolation is equivalent to polynomial extrapolation of degree N-1
+    """Richardson extrapolation.
+
+    Requires is equivalent to polynomial extrapolation of degree N-1
     where N is the number of points.
     """
     return fit_polynomial(scales, values, degree=len(scales)-1)

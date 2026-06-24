@@ -223,3 +223,17 @@ hardware submission and Level-B benchmarking are through `run_irb_on_braket.py` 
 ---
 
 *gradpulse is built and maintained by [Pure State Labs Inc.](https://purestatelabs.com), MIT-licensed.*
+
+### New Integration Modules
+
+| File | What it does |
+|---|---|
+| [src/gradpulse/dlp.py](src/gradpulse/dlp.py) | Differentiable Logical Programming: soft logical constraints embedded directly into continuous GRAPE optimization. |
+| [src/gradpulse/microscheduler.py](src/gradpulse/microscheduler.py) | Cycle-Aware Micro-Scheduling: precisely packs dependency-resolved analog pulses onto nanosecond boundaries. |
+| [src/gradpulse/distortion.py](src/gradpulse/distortion.py) | Cable Distortion Hack: active pre-distortion (iterative deconvolution) to correct for cryogenic wiring transfer functions. |
+| [src/gradpulse/mitigation.py](src/gradpulse/mitigation.py) | Zero-Noise Extrapolation: noise scaling and polynomial/exponential extrapolation routines for error mitigation. |
+| [src/gradpulse/scheduling.py](src/gradpulse/scheduling.py) | Dependency Graphs: Directed Acyclic Graph structures for ensuring causal, commutation-aware execution of quantum operations. |
+| [src/gradpulse/compression.py](src/gradpulse/compression.py) | Pulse-Level Compression: Run-Length Encoding and spline-based downsampling for AWG memory efficiency. |
+| [src/gradpulse/rl.py](src/gradpulse/rl.py) | Reinforcement Learning: Gymnasium environments for discrete sequence discovery beyond local gradients. |
+| [src/gradpulse/hardware.py](src/gradpulse/hardware.py) | Hardware Backends & Bayesian Optimization: Closed-loop interfaces, including Gaussian Process calibration loops. |
+| [src/gradpulse/viz.py](src/gradpulse/viz.py) | Visualization Suite: dynamic Bloch trajectories, color-coded heatmaps, and pulse spectrograms. |

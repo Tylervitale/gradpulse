@@ -1,3 +1,4 @@
+"""Reinforcement learning module."""
 import math
 from typing import Any, Dict, Optional, Tuple
 
@@ -23,10 +24,12 @@ class CrossResonanceEnv(gym.Env):
     The action space proposes a macroscopic pulse configuration (the envelope seed).
     The reward is based on the process fidelity of the resulting pulse.
     """
+
     def __init__(self, optimizer: CrossResonanceZXOptimizer,
                  dt_ns: float = 1.0,
                  n_slices: int = 150,
                  max_steps: int = 50):
+        """Initialize the RL environment."""
         if gym is None:
             raise ImportError("gymnasium is required for the RL module. "
                               "Install it with `pip install gymnasium`.")
@@ -45,6 +48,7 @@ class CrossResonanceEnv(gym.Env):
         self.action_space = spaces.Box(low=-1.0, high=1.0, shape=(4,), dtype=np.float32)
 
     def reset(self, seed: Optional[int] = None, options: Optional[Dict] = None) -> Tuple[np.ndarray, Dict[str, Any]]:
+        """Reset the environment."""
         super().__init__() if hasattr(super(), '__init__') else None
         if seed is not None:
             np.random.seed(seed)
@@ -52,6 +56,7 @@ class CrossResonanceEnv(gym.Env):
         return np.array([0.0], dtype=np.float32), {}
 
     def step(self, action: np.ndarray) -> Tuple[np.ndarray, float, bool, bool, Dict[str, Any]]:
+        """Take a step in the environment."""
         self.current_step += 1
 
         # Build envelope from action

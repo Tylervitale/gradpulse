@@ -1,3 +1,4 @@
+"""Cable distortion hack module."""
 import torch
 import numpy as np
 
@@ -49,8 +50,9 @@ class Predistorter:
         return convolved[:N]
 
     def invert_tikhonov(self, ideal_pulse: torch.Tensor, lambda_reg: float = 1e-3) -> torch.Tensor:
-        """
-        Iterative Tikhonov regularization in the frequency domain.
+        """Iterate Tikhonov regularization.
+
+        Iterative regularization in the frequency domain.
         H_inv = H* / (|H|^2 + lambda_reg)
         """
         ideal_pulse = ideal_pulse.to(self.device)
