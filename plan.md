@@ -37,7 +37,7 @@ This document details the architectural roadmap and implementation steps require
   - Create a `BayesianCalibrationLoop` that iteratively proposes new pulse parameters (like amplitude scales or frequency offsets) by maximizing an Acquisition Function (e.g., Expected Improvement).
   - Use BO to refine the coherence parameters ($T_1$, $T_2$) or systematic Hamiltonian drift dynamically.
 
-## 5. Cycle-Aware Micro-Scheduling
+## 5. Cycle-Aware Micro-Scheduling [x]
 **Objective:** Tightly pack analog pulses onto a hardware timeline, accounting for pulse ring-down times, buffer constraints, and channel limitations.
 **Implementation Steps:**
 - **Module:** Create `src/gradpulse/microscheduler.py` (interfacing with `scheduling.py`)
