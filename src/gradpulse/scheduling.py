@@ -115,13 +115,16 @@ def check_commutation(op1_matrix: np.ndarray | None, op1_qubits: list[int],
 
 class OperationNode:
     """Represents a quantum operation (pulse or gate) in the dependency graph."""
-    def __init__(self, op_id: str, qubits: list[int], matrix: np.ndarray | None = None):
+    def __init__(self, op_id: str, qubits: list[int], matrix: np.ndarray | None = None,
+                 duration_ns: float = 0.0, channels: list[str] | None = None):
         self.op_id = op_id
         self.qubits = qubits
         self.matrix = matrix
+        self.duration_ns = duration_ns
+        self.channels = channels if channels is not None else []
 
     def __repr__(self):
-        return f"OperationNode({self.op_id}, qubits={self.qubits})"
+        return f"OperationNode({self.op_id}, qubits={self.qubits}, duration_ns={self.duration_ns}, channels={self.channels})"
 
 class DependencyGraph:
     """
