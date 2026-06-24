@@ -156,3 +156,154 @@ def plot_robustness(sweep, axes=None):
         ax.grid(alpha=0.3)
     fig.tight_layout()
     return fig
+
+def plot_state_heatmap(density_matrix, ax=None, cmap="magma"):
+    """Plot the populations and coherences of a density matrix over time as a heatmap.
+
+    ``density_matrix`` should be a 3D array of shape [time_steps, N, N] representing the
+    density matrix at each time step.
+    Returns the Axes.
+    """
+    plt = _plt()
+    dm = np.asarray(density_matrix)
+    if dm.ndim != 3 or dm.shape[1] != dm.shape[2]:
+        raise ValueError("density_matrix must be a 3D array of shape [time_steps, N, N]")
+
+    n_steps, N, _ = dm.shape
+
+    # We'll plot the absolute value of the density matrix elements
+    # Reshape it to 2D for imshow: [N*N, time_steps] where we flatten the matrix for each step
+    dm_flat = np.abs(dm).reshape(n_steps, N * N).T
+
+    if ax is None:
+        _, ax = plt.subplots(figsize=(8, 6))
+
+    im = ax.imshow(dm_flat, aspect='auto', cmap=cmap, origin='lower',
+                   extent=[0, n_steps - 1, -0.5, N * N - 0.5])
+
+    # Set y-ticks to correspond to matrix elements
+    yticks = np.arange(N * N)
+    yticklabels = [f"|{i}><{j}|" for i in range(N) for j in range(N)]
+
+    # If N is large, maybe don't show all ticks, but for small N (e.g. 3 or 4) it's fine.
+    if N * N <= 25:
+        ax.set_yticks(yticks)
+        ax.set_yticklabels(yticklabels)
+    else:
+        # Just show populations
+        pop_indices = [i * N + i for i in range(N)]
+        pop_labels = [f"|{i}><{i}|" for i in range(N)]
+        ax.set_yticks(pop_indices)
+        ax.set_yticklabels(pop_labels)
+
+    ax.set_xlabel("Time step")
+    ax.set_ylabel("Density matrix element")
+    ax.set_title("State Evolution Heatmap")
+    plt.colorbar(im, ax=ax, label="|ρ_ij|")
+
+    return ax
+
+def plot_bloch_trajectory(states, ax=None, cmap="viridis"):
+    """Plot a dynamic Bloch sphere trajectory with color gradients representing time evolution.
+
+    ``states`` should be an array of shape [time_steps, 3] representing the Bloch vector
+    at each time step.
+    Returns the Axes.
+    """
+    plt = _plt()
+
+    try:
+        from mpl_toolkits.mplot3d import Axes3D
+    except ImportError:
+        pass
+
+    states = np.asarray(states)
+    if states.ndim != 2 or states.shape[1] != 3:
+        raise ValueError("states must be a 2D array of shape [time_steps, 3]")
+
+    if ax is None:
+        fig = plt.figure(figsize=(6, 6))
+        ax = fig.add_subplot(111, projection='3d')
+
+    # Draw sphere
+    u = np.linspace(0, 2 * np.pi, 100)
+    v = np.linspace(0, np.pi, 100)
+    x = np.outer(np.cos(u), np.sin(v))
+    y = np.outer(np.sin(u), np.sin(v))
+    z = np.outer(np.ones(np.size(u)), np.cos(v))
+    ax.plot_surface(x, y, z, color='lightgray', alpha=0.1, rstride=5, cstride=5)
+
+    # Draw axes
+    ax.plot([-1, 1], [0, 0], [0, 0], color='k', linestyle='--', linewidth=0.5)
+    ax.plot([0, 0], [-1, 1], [0, 0], color='k', linestyle='--', linewidth=0.5)
+    ax.plot([0, 0], [0, 0], [-1, 1], color='k', linestyle='--', linewidth=0.5)
+
+    # Plot trajectory with color gradient
+    time_steps = len(states)
+    colors = plt.get_cmap(cmap)(np.linspace(0, 1, time_steps))
+
+    for i in range(time_steps - 1):
+        ax.plot(states[i:i+2, 0], states[i:i+2, 1], states[i:i+2, 2], color=colors[i], linewidth=2)
+
+    # Mark start and end
+    ax.scatter(*states[0], color='green', marker='o', s=50, label='Start')
+    ax.scatter(*states[-1], color='red', marker='x', s=50, label='End')
+
+    ax.set_xlim([-1, 1])
+    ax.set_ylim([-1, 1])
+    ax.set_zlim([-1, 1])
+    ax.set_xlabel('X')
+    ax.set_ylabel('Y')
+    ax.set_zlabel('Z')
+    ax.set_title('Bloch Sphere Trajectory')
+    ax.legend()
+
+    # Add a colorbar for time
+    sm = plt.cm.ScalarMappable(cmap=cmap, norm=plt.Normalize(vmin=0, vmax=time_steps-1))
+    sm.set_array([])
+    plt.colorbar(sm, ax=ax, label="Time step", pad=0.1, shrink=0.7)
+
+    return ax
+
+def plot_spectrogram(result, dt_ns=None, ax=None, channel_idx=0, cmap="viridis", NFFT=256, noverlap=128):
+    """Plot a spectrogram of the synthesized pulse for visual debugging of frequency content.
+
+    ``result`` is an optimizer result dict or raw array.
+    ``channel_idx`` specifies which control channel to plot (default: 0).
+    Returns the Axes.
+    """
+    plt = _plt()
+    wf, dt = _as_waveform(result)
+
+    if dt_ns is not None:
+        dt = float(dt_ns)
+
+    if channel_idx >= wf.shape[1]:
+        raise ValueError(f"channel_idx {channel_idx} out of bounds for {wf.shape[1]} channels")
+
+    signal = wf[:, channel_idx]
+
+    # The time step is dt (in ns). Sampling frequency is 1 / dt (in GHz).
+    Fs = 1.0 / dt
+
+    if ax is None:
+        _, ax = plt.subplots(figsize=(8, 4))
+
+    # If NFFT is larger than the signal, adjust it
+    nfft_actual = min(NFFT, len(signal))
+    noverlap_actual = min(noverlap, nfft_actual - 1)
+
+    # We only plot positive frequencies if the signal is real, but let's assume it could be complex
+    # or just use default specgram which handles both. For envelope pulses, they might be complex
+    # if represented as I + jQ. But the waveform might be split into real channels.
+    # We'll just pass the signal directly.
+    Pxx, freqs, bins, im = ax.specgram(signal, NFFT=nfft_actual, Fs=Fs, noverlap=noverlap_actual, cmap=cmap)
+
+    ax.set_xlabel("Time (ns)")
+    ax.set_ylabel("Frequency (GHz)")
+    ax.set_title(f"Spectrogram (Channel {channel_idx})")
+
+    # Add colorbar
+    plt.colorbar(im, ax=ax, label="Power / Frequency (dB/Hz)")
+
+    return ax

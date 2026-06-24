@@ -2,7 +2,7 @@
 
 This document details the architectural roadmap and implementation steps required to integrate a suite of advanced quantum control and software engineering concepts into the `gradpulse` framework.
 
-## 1. Color Graphing
+## 1. Color Graphing [x]
 **Objective:** Enhance the visualization suite (`viz.py`) to provide rich, color-coded representations of quantum dynamics, leakage, and pulse characteristics.
 **Implementation Steps:**
 - **Module:** `src/gradpulse/viz.py`
