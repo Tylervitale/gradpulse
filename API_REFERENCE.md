@@ -878,3 +878,62 @@ viz.plot_robustness(r["optimizer"].robustness_sweep(r["best_raw_param"]))
 ---
 
 *gradpulse is built and maintained by [Pure State Labs Inc.](https://purestatelabs.com), MIT-licensed.*
+
+
+## Differentiable Logical Programming (`dlp.py`)
+
+Embeds declarative soft logic constraints inside GRAPE's differentiable loss function.
+
+- `Proposition`: Base class for declarative propositions.
+- `Rule(premise: Proposition, penalty_weight: float)`: An IF-THEN constraint evaluated during optimization.
+- `SoftLogic`: Continuous approximations for logic gates (`soft_and`, `soft_or`, `implies`).
+- `SoftRelational`: Continuous approximations for relational operators (`greater_than`, `less_than`, `equals`).
+
+## Advanced Scheduling (`scheduling.py` & `microscheduler.py`)
+
+Dependency graphs and tight nanosecond packing for sequence execution.
+
+- `DependencyGraph`: Models causal execution dependencies as a Directed Acyclic Graph.
+- `OperationNode`: Represents a scheduled pulse or gate.
+- `check_commutation(op1, op2)`: Safely checks if disjoint gates can commute.
+- `MicroScheduler(dt_ns, channel_constraints)`: Maps a DependencyGraph onto continuous nanosecond boundaries, respecting ring-down delays.
+
+## Calibration and Bayesian Optimization (`hardware.py`)
+
+Derivative-free optimization and active learning for closed-loop hardware execution.
+
+- `BayesianCalibrationLoop(backend, bounds)`: A surrogate-model optimizer (using Expected Improvement or Probability of Improvement).
+- `HardwareBackend`: Base interface for submitting pulses to physical QPUs.
+- `calibrate_to_hardware(...)`: Main closed-loop calibration routine.
+
+## Distortion and Error Mitigation (`distortion.py` & `mitigation.py`)
+
+Active corrections for physical control constraints.
+
+- `Predistorter(kernel)`: Inverts cryogenic wiring transfer functions using iterative Tikhonov regularization.
+- `ZNE(scales, method, scaling_type)`: Manager for Zero-Noise Extrapolation experiments.
+- `stretch_pulse`, `fold_pulse`: Native noise-scaling routines for mitigation.
+
+## Reinforcement Learning (`rl.py`)
+
+Gymnasium environments to discover non-intuitive discrete parameter regimes.
+
+- `CrossResonanceEnv`: Exposes the GRAPE optimizer as an RL environment to find initial seed macros.
+- `train_ppo(...)`: Harness to train a Soft Actor-Critic / PPO agent using stable-baselines3.
+
+## Waveform Compression (`compression.py`)
+
+Reduces payload sizes for AWG memory limits.
+
+- `compress_rle`: Constant-amplitude run-length encoding.
+- `compress_delta`: Time-domain delta encoding.
+- `compress_spline`: Spline-based downsampling.
+- `verify_compression`: Strict check ensuring decompression remains within machine bounds.
+
+## Visualization (`viz.py`)
+
+Rich, color-coded representations of quantum dynamics.
+
+- `plot_state_heatmap`: Time evolution of N-level system populations with continuous colormaps.
+- `plot_bloch_trajectory`: Gradient-colored Bloch sphere trajectories representing leakage.
+- `plot_spectrogram`: Time-frequency diagnostic views.

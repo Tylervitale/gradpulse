@@ -1,3 +1,4 @@
+"""Differentiable Logical Programming module."""
 import torch
 
 class SoftLogic:
@@ -15,6 +16,7 @@ class SoftLogic:
     def soft_and(x: torch.Tensor, y: torch.Tensor, method: str = "product") -> torch.Tensor:
         """
         Differentiable AND operation.
+
         Methods:
           - 'product': x * y (Product t-norm)
           - 'lukasiewicz': max(0, x + y - 1)
@@ -33,6 +35,7 @@ class SoftLogic:
     def soft_or(x: torch.Tensor, y: torch.Tensor, method: str = "product") -> torch.Tensor:
         """
         Differentiable OR operation.
+
         Methods:
           - 'product': x + y - x * y (Probabilistic sum)
           - 'lukasiewicz': min(1, x + y)
