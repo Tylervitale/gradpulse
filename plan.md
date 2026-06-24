@@ -64,7 +64,7 @@ This document details the architectural roadmap and implementation steps require
   - Allow the user to formulate declarative constraints (e.g., "IF leakage exceeds X, THEN heavily penalize bandwidth").
   - Integrate these logical propositions into the PyTorch loss tensor to guide the optimizer dynamically based on intermediate state behavior.
 
-## 8. Reinforcement Learning (RL)
+## 8. Reinforcement Learning (RL) [x]
 **Objective:** Discover non-intuitive pulse seeds and discrete sequence choices that local gradient descent (GRAPE) might miss.
 **Implementation Steps:**
 - **Module:** Create `src/gradpulse/rl.py`

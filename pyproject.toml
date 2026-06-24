@@ -38,6 +38,7 @@ braket = ["amazon-braket-sdk>=1.70"]     # hardware on-ramp (gradpulse.braket_br
 openpulse = ["openpulse>=1.0"]           # OpenPulse 3.0 export + round-trip parser
 benchmark = ["qutip-qtrl>=0.1"]          # head-to-head GRAPE benchmark (gradpulse.benchmark)
 bo = ["scikit-learn>=1.0", "scipy>=1.10"] # Bayesian Optimization (gradpulse.hardware)
+rl = ["gymnasium>=0.28", "stable-baselines3>=2.0"] # Reinforcement Learning (gradpulse.rl)
 
 [project.urls]
 Repository = "https://github.com/PureStateLabs/gradpulse"
