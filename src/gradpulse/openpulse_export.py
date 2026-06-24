@@ -81,7 +81,9 @@ def to_openpulse_program(waveform, dt_ns: float = 1.0, *,
                          qubits: Sequence[int] = (0, 1),
                          frame_freqs_hz: Optional[Sequence[float]] = None,
                          labels: Optional[Sequence[str]] = None,
-                         normalize: bool = True) -> str:
+                         normalize: bool = True,
+                         compress_rle: bool = False,
+                         rle_atol: float = 1e-12) -> str:
     """Emit a gate as an OpenQASM 3 / OpenPulse 3.0 program string.
 
     waveform : the saved real [n_slices, n_ch] envelope, a complex [n_slices, n_ch]
@@ -96,6 +98,9 @@ def to_openpulse_program(waveform, dt_ns: float = 1.0, *,
         so only the shape is portable. The per-channel physical peak (in the input's
         units, e.g. rad/ns) is written into a comment so you can match it to the
         device's calibrated drive strength.
+    compress_rle : if True, use OpenPulse `delay` statements to represent constant
+        zero-amplitude sections, minimizing waveform array size.
+    rle_atol : absolute tolerance to consider values as zero.
 
     Returns the program text. Verify it offline with ``verify_openpulse_roundtrip``.
     """
@@ -133,14 +138,58 @@ def to_openpulse_program(waveform, dt_ns: float = 1.0, *,
     for c in range(n_ch):
         L.append(f"    frame {lbls[c]}_frame = newframe({lbls[c]}_port, "
                  f"{freqs[c]:.6g}, 0.0);")
-    for c in range(n_ch):
-        body = ", ".join(_fmt_sample(z) for z in samples[:, c])
-        L.append(f"    waveform {lbls[c]}_wf = {{{body}}};")
+
+    # Compress zeros via RLE into delays, keeping non-zero regions as arrays.
+    ch_play_statements = {c: [] for c in range(n_ch)}
+
+    if compress_rle:
+        from gradpulse.compression import compress_rle as _do_rle, decompress_rle, verify_compression
+        compressed = _do_rle(samples, atol=rle_atol)
+        verify_compression(samples, decompress_rle(compressed, n_slices=n_slices), atol=rle_atol)
+
+        wf_idx = 0
+        for c in range(n_ch):
+            vals = compressed[c]['values']
+            lengths = compressed[c]['lengths']
+
+            current_nonzero_buffer = []
+
+            def flush_nonzero_buffer():
+                nonlocal wf_idx, current_nonzero_buffer
+                if not current_nonzero_buffer:
+                    return
+                wf_name = f"{lbls[c]}_wf_{wf_idx}"
+                wf_idx += 1
+                body = ", ".join(_fmt_sample(v) for v in current_nonzero_buffer)
+                L.append(f"    waveform {wf_name} = {{{body}}};")
+                ch_play_statements[c].append(f"    play({lbls[c]}_frame, {wf_name});")
+                current_nonzero_buffer = []
+
+            for v, length in zip(vals, lengths):
+                if np.abs(v) <= rle_atol:
+                    # It's a zero run. First flush any accumulated non-zeros.
+                    flush_nonzero_buffer()
+                    # Then output a delay
+                    ch_play_statements[c].append(f"    delay[{length} * {dt_ns}ns] {lbls[c]}_frame;")
+                else:
+                    # It's non-zero, append to buffer (expand the RLE run)
+                    current_nonzero_buffer.extend([v] * length)
+
+            # Flush at the end
+            flush_nonzero_buffer()
+    else:
+        for c in range(n_ch):
+            body = ", ".join(_fmt_sample(z) for z in samples[:, c])
+            L.append(f"    waveform {lbls[c]}_wf = {{{body}}};")
+            ch_play_statements[c].append(f"    play({lbls[c]}_frame, {lbls[c]}_wf);")
+
     L.append("}")
+
     q_args = ", ".join(f"${q}" for q in qubits)
     L.append(f"defcal {gate_name} {q_args} {{")
     for c in range(n_ch):
-        L.append(f"    play({lbls[c]}_frame, {lbls[c]}_wf);")
+        for stmt in ch_play_statements[c]:
+            L.append(stmt)
     L.append(f"    barrier {q_args};")
     L.append("}")
     return "\n".join(L) + "\n"

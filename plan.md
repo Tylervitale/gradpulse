@@ -73,7 +73,7 @@ This document details the architectural roadmap and implementation steps require
   - Implement a Soft Actor-Critic (SAC) or Proximal Policy Optimization (PPO) agent.
   - Use RL for "macro-architecture" discovery (e.g., choosing when to flip drive signs in echoed-CR) and use GRAPE for the final continuous parameter polish.
 
-## 9. Pulse-Level Compression
+## 9. Pulse-Level Compression [x]
 **Objective:** Compress the highly granular output waveform arrays for efficient transmission and memory usage on AWG hardware.
 **Implementation Steps:**
 - **Module:** Create `src/gradpulse/compression.py` and modify `openpulse_export.py`
