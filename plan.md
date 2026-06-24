@@ -28,7 +28,7 @@ This document details the architectural roadmap and implementation steps require
   - Implement a Directed Acyclic Graph (DAG) data structure where nodes are analog pulses (or gates) and edges are causal dependencies (e.g., qubit overlap, commutation relations).
   - Add a commutation checker to determine if two adjacent pulses targeting disjoint or intersecting qubit subsets can be executed concurrently without altering the unitary outcome.
 
-## 4. Bayesian Optimization (BO)
+## 4. Bayesian Optimization (BO) [x]
 **Objective:** Implement derivative-free optimization for closed-loop hardware calibration where exact gradients are unavailable.
 **Implementation Steps:**
 - **Module:** Enhance `src/gradpulse/hardware.py`

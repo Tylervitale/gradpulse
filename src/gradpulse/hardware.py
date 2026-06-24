@@ -53,6 +53,134 @@ except ImportError:  # pragma: no cover - direct-script execution
     from parametric import ParametricCouplerProfile, ParametricCZOptimizer, DEVICE
     import rb as _rb
 
+def expected_improvement(X: np.ndarray, X_sample: np.ndarray, Y_sample: np.ndarray, gpr: "GaussianProcessRegressor", xi: float = 0.01) -> np.ndarray:
+    import scipy.stats
+    """Computes the Expected Improvement at points X."""
+    mu, sigma = gpr.predict(X, return_std=True)
+    mu_sample_opt = np.max(Y_sample)
+
+    with np.errstate(divide='warn'):
+        imp = mu - mu_sample_opt - xi
+        Z = imp / sigma
+        ei = imp * scipy.stats.norm.cdf(Z) + sigma * scipy.stats.norm.pdf(Z)
+        ei[sigma == 0.0] = 0.0
+
+    return ei
+
+def probability_of_improvement(X: np.ndarray, X_sample: np.ndarray, Y_sample: np.ndarray, gpr: "GaussianProcessRegressor", xi: float = 0.01) -> np.ndarray:
+    import scipy.stats
+    """Computes the Probability of Improvement at points X."""
+    mu, sigma = gpr.predict(X, return_std=True)
+    mu_sample_opt = np.max(Y_sample)
+
+    with np.errstate(divide='warn'):
+        imp = mu - mu_sample_opt - xi
+        Z = imp / sigma
+        pi = scipy.stats.norm.cdf(Z)
+        pi[sigma == 0.0] = 0.0
+
+    return pi
+
+def upper_confidence_bound(X: np.ndarray, X_sample: np.ndarray, Y_sample: np.ndarray, gpr: "GaussianProcessRegressor", kappa: float = 2.576) -> np.ndarray:
+    """Computes the Upper Confidence Bound at points X."""
+    mu, sigma = gpr.predict(X, return_std=True)
+    return mu + kappa * sigma
+
+
+class BayesianCalibrationLoop:
+    """Bayesian Optimization loop for closed-loop hardware calibration.
+
+    Uses a Gaussian Process surrogate model to map continuous pulse parameters
+    (e.g., amplitude scale, frequency offsets) to the measured fidelity on hardware.
+    Iteratively proposes new parameters by maximizing an Acquisition Function.
+    """
+    def __init__(self, backend, base_waveform: np.ndarray, dt_ns: float = 1.0, acquisition_fn: str = "EI"):
+        self.backend = backend
+        self.base_waveform = np.asarray(base_waveform)
+        self.dt_ns = dt_ns
+
+        if acquisition_fn == "EI":
+            self.acq_fn = expected_improvement
+        elif acquisition_fn == "PI":
+            self.acq_fn = probability_of_improvement
+        elif acquisition_fn == "UCB":
+            self.acq_fn = upper_confidence_bound
+        else:
+            raise ValueError(f"Unknown acquisition function: {acquisition_fn}")
+
+        from sklearn.gaussian_process import GaussianProcessRegressor
+        from sklearn.gaussian_process.kernels import Matern
+
+        self.gpr = GaussianProcessRegressor(kernel=Matern(nu=2.5), normalize_y=True, alpha=1e-4)
+        self.X_sample = []
+        self.Y_sample = []
+
+    def _propose_location(self, bounds: np.ndarray, n_restarts: int = 10) -> np.ndarray:
+        dim = bounds.shape[0]
+        min_val = float('inf')
+        best_x = None
+
+        def min_obj(x):
+            return -self.acq_fn(x.reshape(-1, dim), np.array(self.X_sample), np.array(self.Y_sample), self.gpr)[0]
+
+        import scipy.optimize
+        for starting_point in np.random.uniform(bounds[:, 0], bounds[:, 1], size=(n_restarts, dim)):
+            res = scipy.optimize.minimize(min_obj, x0=starting_point, bounds=bounds, method='L-BFGS-B')
+            if res.fun < min_val:
+                min_val = res.fun
+                best_x = res.x
+
+        if best_x is None:
+            best_x = np.random.uniform(bounds[:, 0], bounds[:, 1])
+        return best_x
+
+    def run(self, bounds, apply_params_fn, n_iterations: int = 10, n_init: int = 5):
+        """Runs the optimization loop.
+
+        Args:
+            bounds: A sequence of (min, max) pairs for each parameter.
+            apply_params_fn: A callable `(base_waveform, params) -> new_waveform`
+                             that applies the parameters to the base waveform.
+            n_iterations: Number of BO iterations.
+            n_init: Number of random initializations.
+        """
+        bounds = np.array(bounds)
+        dim = bounds.shape[0]
+
+        # Initialization
+        for _ in range(n_init):
+            x = np.random.uniform(bounds[:, 0], bounds[:, 1])
+            wf = apply_params_fn(self.base_waveform, x)
+            meas = self.backend.measure_gate(wf, dt_ns=self.dt_ns, meta={"bo_phase": "init"})
+            self.X_sample.append(x)
+            self.Y_sample.append(meas.f_avg)
+
+        self.gpr.fit(np.array(self.X_sample), np.array(self.Y_sample))
+
+        # Optimization loop
+        history = []
+        for i in range(n_iterations):
+            next_x = self._propose_location(bounds)
+            wf = apply_params_fn(self.base_waveform, next_x)
+            meas = self.backend.measure_gate(wf, dt_ns=self.dt_ns, meta={"bo_phase": "opt", "iteration": i})
+
+            self.X_sample.append(next_x)
+            self.Y_sample.append(meas.f_avg)
+            self.gpr.fit(np.array(self.X_sample), np.array(self.Y_sample))
+
+            history.append({
+                "iteration": i,
+                "params": next_x,
+                "f_avg": meas.f_avg
+            })
+
+        best_idx = np.argmax(self.Y_sample)
+        return {
+            "best_params": self.X_sample[best_idx],
+            "best_f_avg": self.Y_sample[best_idx],
+            "history": history
+        }
+
 
 @dataclass
 class GateMeasurement:

@@ -32,5 +32,9 @@ matplotlib>=3.6
 amazon-braket-sdk>=1.70
 openpulse>=1.0
 
+# --- bayesian optimization (gradpulse.hardware) ---
+scikit-learn>=1.0
+scipy>=1.10
+
 # --- tests ---
 pytest>=7.0
