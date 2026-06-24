@@ -82,7 +82,7 @@ This document details the architectural roadmap and implementation steps require
   - Implement Run-Length Encoding (RLE) and delta encoding for regions where the pulse amplitude is constant (e.g., idling periods or flat-tops).
   - Provide a strict decompression verifier to ensure the compressed pulse deviates from the target by no more than machine precision or a specified DAC resolution bound.
 
-## 10. Zero-Noise Extrapolation (ZNE)
+## 10. Zero-Noise Extrapolation (ZNE) [x]
 **Objective:** Implement Zero-Noise Extrapolation as an error mitigation technique to estimate noise-free expectation values from noisy pulse executions.
 **Implementation Steps:**
 - **Module:** Create `src/gradpulse/mitigation.py`
