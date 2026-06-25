@@ -2,17 +2,20 @@ import os
 import json
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
-    QComboBox, QFormLayout, QGroupBox, QFileDialog, QDoubleSpinBox, QSplitter
+    QComboBox, QFormLayout, QGroupBox, QFileDialog, QDoubleSpinBox, QSplitter, QTabWidget, QTextEdit, QSpinBox
 )
 from PyQt6.QtCore import Qt
 
 from ui.components.mpl_widget import MatplotlibWidget
 from core.worker import Worker
 from gradpulse import validate, liouville_f_proc, liouville_cr_f_proc, liouville_nqubit_closed_f_proc
-from gradpulse.profiles import ParametricCouplerProfile, CrossResonanceProfile
+from gradpulse.profiles import ParametricCouplerProfile
+from gradpulse.crossresonance import CrossResonanceProfile
 from gradpulse.analysis import ParametricCZAnalysisMixin
 import numpy as np
 from gradpulse.viz import plot_error_budget, plot_robustness
+from gradpulse.rb import interleaved_rb, native_superops, gate_superoperator
+from gradpulse.headtohead import run_head_to_head
 
 class AnalysisPanel(QWidget):
     def __init__(self, main_window):
@@ -26,6 +29,28 @@ class AnalysisPanel(QWidget):
 
     def initUI(self):
         layout = QVBoxLayout(self)
+
+        self.tabs = QTabWidget()
+
+        # 1. Validation & Plotting Tab (Original content)
+        self.val_tab = QWidget()
+        self.init_val_tab()
+        self.tabs.addTab(self.val_tab, "Validation & Plotting")
+
+        # 2. Randomized Benchmarking Tab
+        self.rb_tab = QWidget()
+        self.init_rb_tab()
+        self.tabs.addTab(self.rb_tab, "Randomized Benchmarking")
+
+        # 3. Head-to-Head Tab
+        self.h2h_tab = QWidget()
+        self.init_h2h_tab()
+        self.tabs.addTab(self.h2h_tab, "Head-to-Head")
+
+        layout.addWidget(self.tabs)
+
+    def init_val_tab(self):
+        layout = QVBoxLayout(self.val_tab)
 
         # 1. Top Bar: Load Pulse
         top_bar = QHBoxLayout()
@@ -84,6 +109,85 @@ class AnalysisPanel(QWidget):
         splitter.setSizes([300, 700])
 
         layout.addWidget(splitter)
+
+    def init_rb_tab(self):
+        layout = QVBoxLayout(self.rb_tab)
+
+        splitter = QSplitter(Qt.Orientation.Horizontal)
+
+        control_widget = QWidget()
+        control_layout = QVBoxLayout(control_widget)
+        control_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
+
+        rb_group = QGroupBox("Interleaved RB Settings")
+        rb_form = QFormLayout()
+
+        self.rb_sequences = QSpinBox()
+        self.rb_sequences.setRange(10, 1000)
+        self.rb_sequences.setValue(40)
+        rb_form.addRow("Sequences:", self.rb_sequences)
+
+        self.run_rb_btn = QPushButton("Run Simulated IRB")
+        self.run_rb_btn.clicked.connect(self.run_rb)
+        rb_form.addRow("", self.run_rb_btn)
+
+        rb_group.setLayout(rb_form)
+        control_layout.addWidget(rb_group)
+
+        self.rb_output = QTextEdit()
+        self.rb_output.setReadOnly(True)
+        self.rb_output.setStyleSheet("background-color: #1e1e1e; color: #d4d4d4; font-family: monospace;")
+
+        splitter.addWidget(control_widget)
+        splitter.addWidget(self.rb_output)
+        splitter.setSizes([300, 700])
+
+        layout.addWidget(splitter)
+
+    def init_h2h_tab(self):
+        layout = QVBoxLayout(self.h2h_tab)
+
+        splitter = QSplitter(Qt.Orientation.Horizontal)
+
+        control_widget = QWidget()
+        control_layout = QVBoxLayout(control_widget)
+        control_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
+
+        h2h_group = QGroupBox("Head-to-Head Config")
+        h2h_form = QFormLayout()
+
+        self.h2h_min_dur = QSpinBox()
+        self.h2h_min_dur.setRange(10, 500)
+        self.h2h_min_dur.setValue(50)
+        h2h_form.addRow("Min Duration (ns):", self.h2h_min_dur)
+
+        self.h2h_max_dur = QSpinBox()
+        self.h2h_max_dur.setRange(50, 1000)
+        self.h2h_max_dur.setValue(200)
+        h2h_form.addRow("Max Duration (ns):", self.h2h_max_dur)
+
+        self.h2h_steps = QSpinBox()
+        self.h2h_steps.setRange(2, 50)
+        self.h2h_steps.setValue(5)
+        h2h_form.addRow("Steps:", self.h2h_steps)
+
+        self.run_h2h_btn = QPushButton("Run Head-to-Head Comparison")
+        self.run_h2h_btn.clicked.connect(self.run_h2h)
+        h2h_form.addRow("", self.run_h2h_btn)
+
+        h2h_group.setLayout(h2h_form)
+        control_layout.addWidget(h2h_group)
+
+        self.h2h_output = QTextEdit()
+        self.h2h_output.setReadOnly(True)
+        self.h2h_output.setStyleSheet("background-color: #1e1e1e; color: #d4d4d4; font-family: monospace;")
+
+        splitter.addWidget(control_widget)
+        splitter.addWidget(self.h2h_output)
+        splitter.setSizes([300, 700])
+
+        layout.addWidget(splitter)
+
 
     def load_pulse(self):
         file_name, _ = QFileDialog.getOpenFileName(self, "Open Pulse JSON", "", "JSON Files (*.json)")
@@ -151,9 +255,6 @@ class AnalysisPanel(QWidget):
                 raise ValueError("No active optimization result found. Please run an optimization first.")
             result = opt_panel.result
 
-            # Since the API says we need the optimizer to generate the budget, we look it up or mock it.
-            # In our current setup, we need the optimizer returned from the `optimize_cz` etc.
-            # By default it is returned in result['optimizer']
             if 'optimizer' not in result:
                 raise ValueError("Optimization result missing 'optimizer' key.")
 
@@ -175,6 +276,64 @@ class AnalysisPanel(QWidget):
 
         self.threadpool.start(worker)
 
+    def run_rb(self):
+        self.run_rb_btn.setEnabled(False)
+        self.run_rb_btn.setText("Running...")
+        self.rb_output.clear()
+
+        n_seq = self.rb_sequences.value()
+
+        def rb_task():
+            opt_panel = self.main_window.opt_panel
+            if not opt_panel.result or 'best_waveform' not in opt_panel.result:
+                raise ValueError("No active optimization result found. Please run an optimization first.")
+            result = opt_panel.result
+            if 'optimizer' not in result:
+                raise ValueError("Optimization result missing 'optimizer' key.")
+
+            opt = result['optimizer']
+            raw_param = result['best_raw_param']
+
+            # Use gradpulse.rb to calculate the superoperator and run IRB
+            sup = gate_superoperator(opt, raw_param)
+            rb_res = interleaved_rb(sup, n_sequences=n_seq)
+            return rb_res
+
+        worker = Worker(rb_task)
+        worker.signals.result.connect(self.on_rb_success)
+        worker.signals.error.connect(self.on_error)
+        worker.signals.finished.connect(lambda: self._reset_btn(self.run_rb_btn, "Run Simulated IRB"))
+
+        self.threadpool.start(worker)
+
+    def run_h2h(self):
+        self.run_h2h_btn.setEnabled(False)
+        self.run_h2h_btn.setText("Running...")
+        self.h2h_output.clear()
+
+        min_d = self.h2h_min_dur.value()
+        max_d = self.h2h_max_dur.value()
+        steps = self.h2h_steps.value()
+
+        def h2h_task():
+            durations = np.linspace(min_d, max_d, steps)
+
+            opt_panel = self.main_window.opt_panel
+            if opt_panel.loaded_profile:
+                profile = opt_panel.loaded_profile
+            else:
+                profile = ParametricCouplerProfile() # Fallback
+
+            # iterations kept low for GUI responsiveness
+            return run_head_to_head(profile, durations, iterations=50, n_seeds=1, verbose=False)
+
+        worker = Worker(h2h_task)
+        worker.signals.result.connect(self.on_h2h_success)
+        worker.signals.error.connect(self.on_error)
+        worker.signals.finished.connect(lambda: self._reset_btn(self.run_h2h_btn, "Run Head-to-Head Comparison"))
+
+        self.threadpool.start(worker)
+
     def on_val_success(self, result):
         print(f"QuTiP Validation Result: Gap = {result.get('delta', result.get('gap', 'N/A'))}")
 
@@ -189,9 +348,7 @@ class AnalysisPanel(QWidget):
         if ptype == "budget":
             plot_error_budget(data, ax=self.plot_widget.get_axes())
         elif ptype == "robustness":
-            # plot_robustness returns a Figure
             fig = plot_robustness(data)
-            # Reattach to our canvas
             self.plot_widget.canvas.fig = fig
             self.plot_widget.canvas.draw()
         elif ptype == "spectrogram":
@@ -199,6 +356,24 @@ class AnalysisPanel(QWidget):
             plot_spectrogram(data, ax=self.plot_widget.get_axes())
 
         self.plot_widget.canvas.draw()
+
+    def on_rb_success(self, rb_res):
+        text = "--- IRB Results ---\n"
+        text += f"Naive CZ Error: {rb_res.get('r_cz_naive', 'N/A')}\n"
+        text += f"Leakage-Aware CZ Error: {rb_res.get('r_cz_leakage_aware', 'N/A')}\n"
+        text += f"CZ Fidelity (IRB): {rb_res.get('f_cz_irb', 'N/A')}\n"
+        text += f"Leakage/Clifford (L1): {rb_res.get('leakage_per_clifford_L1', 'N/A')}\n"
+        self.rb_output.setPlainText(text)
+
+    def on_h2h_success(self, h2h_res):
+        summary = h2h_res.get('summary', {})
+        text = "--- Head-to-Head Summary ---\n"
+        text += f"In-Loop Chosen Duration: {summary.get('in_loop_best_duration', 'N/A')} ns\n"
+        text += f"Multiply-After Chosen Duration: {summary.get('multiply_after_best_duration', 'N/A')} ns\n"
+        text += f"Delivered Gap: {summary.get('delivered_gap', 'N/A')}\n"
+        text += f"Pulse Shaping Adv.: {summary.get('pulse_shaping_advantage', 'N/A')}\n"
+        text += f"Duration Selection Adv.: {summary.get('duration_selection_advantage', 'N/A')}\n"
+        self.h2h_output.setPlainText(text)
 
     def on_error(self, error):
         print(f"Error during analysis task: {error[1]}")
