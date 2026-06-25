@@ -8,6 +8,15 @@ from core.worker import Worker
 from gradpulse import rl
 from gradpulse.compression import compress_rle, verify_compression
 
+from PyQt6.QtWidgets import QComboBox, QLineEdit, QListWidget, QTextEdit, QSplitter
+from gradpulse.dlp import Rule, Proposition, SoftLogic, SoftRelational
+from gradpulse.scheduling import DependencyGraph, OperationNode
+from gradpulse.microscheduler import Microscheduler
+from gradpulse.distortion import Predistorter
+from gradpulse.benchmark import run_benchmark
+from ui.components.mpl_widget import MatplotlibWidget
+
+
 class AdvancedPanel(QWidget):
     def __init__(self, main_window):
         super().__init__()
@@ -35,6 +44,28 @@ class AdvancedPanel(QWidget):
         self.zne_tab = QWidget()
         self.init_zne_tab()
         self.tabs.addTab(self.zne_tab, "Error Mitigation (ZNE)")
+
+
+
+        # 4. DLP Tab
+        self.dlp_tab = QWidget()
+        self.init_dlp_tab()
+        self.tabs.addTab(self.dlp_tab, "Differentiable Logic (DLP)")
+
+        # 5. Scheduling Tab
+        self.scheduling_tab = QWidget()
+        self.init_scheduling_tab()
+        self.tabs.addTab(self.scheduling_tab, "Advanced Scheduling")
+
+        # 6. Pre-Distortion Tab
+        self.distortion_tab = QWidget()
+        self.init_distortion_tab()
+        self.tabs.addTab(self.distortion_tab, "Cable Pre-Distortion")
+
+        # 7. Benchmarking Tab
+        self.benchmark_tab = QWidget()
+        self.init_benchmark_tab()
+        self.tabs.addTab(self.benchmark_tab, "Benchmarking")
 
         layout.addWidget(self.tabs)
 
@@ -185,3 +216,383 @@ class AdvancedPanel(QWidget):
     def _reset_btn(self, btn, text):
         btn.setEnabled(True)
         btn.setText(text)
+
+    def init_dlp_tab(self):
+        layout = QVBoxLayout(self.dlp_tab)
+
+        group = QGroupBox("DLP Rule Configuration")
+        form = QFormLayout()
+
+        self.dlp_prop_name = QLineEdit()
+        self.dlp_prop_name.setPlaceholderText("e.g. pulse_amplitude_limit")
+        form.addRow("Proposition Name:", self.dlp_prop_name)
+
+        self.dlp_penalty = QDoubleSpinBox()
+        self.dlp_penalty.setRange(0.1, 100.0)
+        self.dlp_penalty.setValue(1.0)
+        form.addRow("Penalty Weight:", self.dlp_penalty)
+
+        self.add_rule_btn = QPushButton("Add Rule")
+        self.add_rule_btn.clicked.connect(self.add_dlp_rule)
+        form.addRow("", self.add_rule_btn)
+
+        self.rules_list = QListWidget()
+        form.addRow("Active Rules:", self.rules_list)
+
+        self.run_dlp_btn = QPushButton("Apply Rules to Optimization")
+        self.run_dlp_btn.clicked.connect(self.run_dlp_optimization)
+        form.addRow("", self.run_dlp_btn)
+
+        group.setLayout(form)
+        layout.addWidget(group)
+        layout.addStretch()
+
+    def add_dlp_rule(self):
+        name = self.dlp_prop_name.text()
+        weight = self.dlp_penalty.value()
+        if name:
+            self.rules_list.addItem(f"{name} (Weight: {weight})")
+            self.dlp_prop_name.clear()
+
+    def run_dlp_optimization(self):
+        self.run_dlp_btn.setEnabled(False)
+        self.run_dlp_btn.setText("Running...")
+
+        rules = []
+        for i in range(self.rules_list.count()):
+            item_text = self.rules_list.item(i).text()
+            name = item_text.split(" (Weight: ")[0]
+            weight = float(item_text.split(" (Weight: ")[1].strip(")"))
+            rules.append((name, weight))
+
+        print(f"Applying DLP rules: {rules}")
+
+        def dlp_task():
+            import torch
+            from gradpulse.dlp import SoftRelational, Rule
+            import numpy as np
+
+            # We build some real Rule instances to demonstrate applying them
+            # For this UI, we can evaluate a dummy metrics dict against the created rules
+            metrics = {'fidelity': torch.tensor(0.99), 'leakage': torch.tensor(0.001)}
+            rule_objects = []
+
+            for rule_name, weight in rules:
+                # We map some common strings to real proposition evaluation
+                if "leakage" in rule_name.lower():
+                     cond = lambda m: SoftRelational.greater_than(m.get('leakage', torch.tensor(0.0)), threshold=0.005)
+                     cons = lambda m: torch.tensor(0.0) # Consequence is false (we don't want this)
+                     rule_objects.append(Rule(cond, cons, weight=weight))
+                else:
+                     # Generic rule
+                     cond = lambda m: torch.tensor(1.0) # always true
+                     cons = lambda m: torch.tensor(1.0) # always true
+                     rule_objects.append(Rule(cond, cons, weight=weight))
+
+            total_penalty = 0.0
+            for r in rule_objects:
+                 total_penalty += r.evaluate(metrics).item()
+
+            return f"Applied {len(rule_objects)} rules to test metrics. Total Penalty: {total_penalty:.5f}"
+
+        worker = Worker(dlp_task)
+        worker.signals.result.connect(self.on_dlp_success)
+        worker.signals.error.connect(self.on_error)
+        worker.signals.finished.connect(lambda: self._reset_btn(self.run_dlp_btn, "Apply Rules to Optimization"))
+        self.threadpool.start(worker)
+
+    def on_dlp_success(self, result):
+        print(f"DLP success: {result}")
+
+    def init_scheduling_tab(self):
+        layout = QVBoxLayout(self.scheduling_tab)
+        splitter = QSplitter(Qt.Orientation.Horizontal)
+
+        control_widget = QWidget()
+        control_layout = QVBoxLayout(control_widget)
+
+        group = QGroupBox("Construct Schedule Graph")
+        form = QFormLayout()
+
+        self.sched_node_name = QLineEdit()
+        self.sched_node_name.setPlaceholderText("e.g. X_0, CZ_01")
+        form.addRow("Node Name:", self.sched_node_name)
+
+        self.sched_duration = QSpinBox()
+        self.sched_duration.setRange(10, 1000)
+        self.sched_duration.setValue(50)
+        form.addRow("Duration (ns):", self.sched_duration)
+
+        self.sched_channels = QLineEdit()
+        self.sched_channels.setPlaceholderText("e.g. q0_drive, q1_drive")
+        form.addRow("Channels (csv):", self.sched_channels)
+
+        self.add_node_btn = QPushButton("Add Node")
+        self.add_node_btn.clicked.connect(self.add_sched_node)
+        form.addRow("", self.add_node_btn)
+
+        self.sched_dep_parent = QComboBox()
+        self.sched_dep_child = QComboBox()
+        form.addRow("Parent Node:", self.sched_dep_parent)
+        form.addRow("Child Node:", self.sched_dep_child)
+
+        self.add_dep_btn = QPushButton("Add Dependency")
+        self.add_dep_btn.clicked.connect(self.add_sched_dep)
+        form.addRow("", self.add_dep_btn)
+
+        self.load_sched_btn = QPushButton("Load Sequence from JSON")
+        self.load_sched_btn.clicked.connect(self.load_sched_sequence)
+        form.addRow("", self.load_sched_btn)
+
+        self.run_sched_btn = QPushButton("Run MicroScheduler")
+        self.run_sched_btn.clicked.connect(self.run_microscheduler)
+        form.addRow("", self.run_sched_btn)
+
+        group.setLayout(form)
+        control_layout.addWidget(group)
+
+        self.sched_output = QTextEdit()
+        self.sched_output.setReadOnly(True)
+        control_layout.addWidget(self.sched_output)
+
+        viz_widget = QWidget()
+        viz_layout = QVBoxLayout(viz_widget)
+        self.sched_plot = MatplotlibWidget()
+        viz_layout.addWidget(QLabel("Schedule Timeline"))
+        viz_layout.addWidget(self.sched_plot)
+
+        splitter.addWidget(control_widget)
+        splitter.addWidget(viz_widget)
+        splitter.setSizes([400, 600])
+
+        layout.addWidget(splitter)
+
+        self.sched_nodes = {}
+        self.sched_deps = []
+
+    def add_sched_node(self):
+        name = self.sched_node_name.text()
+        dur = self.sched_duration.value()
+        channels = [c.strip() for c in self.sched_channels.text().split(',')] if self.sched_channels.text() else []
+        if name and name not in self.sched_nodes:
+            self.sched_nodes[name] = {'duration': dur, 'channels': channels}
+            self.sched_dep_parent.addItem(name)
+            self.sched_dep_child.addItem(name)
+            self.sched_node_name.clear()
+            self.sched_channels.clear()
+            self.update_sched_output()
+
+    def load_sched_sequence(self):
+        from PyQt6.QtWidgets import QFileDialog
+        import json
+        file_name, _ = QFileDialog.getOpenFileName(self, "Open Sequence JSON", "", "JSON Files (*.json)")
+        if file_name:
+            try:
+                with open(file_name, 'r') as f:
+                    seq_data = json.load(f)
+
+                self.sched_nodes.clear()
+                self.sched_deps.clear()
+                self.sched_dep_parent.clear()
+                self.sched_dep_child.clear()
+
+                for node in seq_data.get('nodes', []):
+                    name = node['name']
+                    self.sched_nodes[name] = {'duration': node['duration'], 'channels': node.get('channels', [])}
+                    self.sched_dep_parent.addItem(name)
+                    self.sched_dep_child.addItem(name)
+
+                for dep in seq_data.get('dependencies', []):
+                    self.sched_deps.append((dep['from'], dep['to']))
+
+                self.update_sched_output()
+                print(f"Loaded sequence from {file_name}")
+            except Exception as e:
+                print(f"Failed to load sequence: {e}")
+
+    def add_sched_dep(self):
+        parent = self.sched_dep_parent.currentText()
+        child = self.sched_dep_child.currentText()
+        if parent and child and parent != child:
+            dep = (parent, child)
+            if dep not in self.sched_deps:
+                self.sched_deps.append(dep)
+                self.update_sched_output()
+
+    def update_sched_output(self):
+        text = "Nodes:\n"
+        for n, data in self.sched_nodes.items():
+            text += f" - {n} ({data['duration']}ns, channels={data['channels']})\n"
+        text += "\nDependencies:\n"
+        for p, c in self.sched_deps:
+            text += f" - {p} -> {c}\n"
+        self.sched_output.setPlainText(text)
+
+    def run_microscheduler(self):
+        self.run_sched_btn.setEnabled(False)
+
+        def sched_task():
+            from gradpulse.microscheduler import Microscheduler
+            from gradpulse.scheduling import DependencyGraph, OperationNode
+
+            graph = DependencyGraph()
+            ops = {}
+            for name, data in self.sched_nodes.items():
+                node = OperationNode(op_id=name, duration_ns=data['duration'], channels=data['channels'], qubits=[])
+                ops[name] = node
+                graph.add_node(node)
+
+            for p, c in self.sched_deps:
+                graph.add_edge(from_id=p, to_id=c)
+
+            scheduler = Microscheduler(dt_ns=1.0)
+            schedule = scheduler.schedule(graph)
+
+            # Map node IDs in schedule to actual OperationNode objects for plotting
+            result_schedule = {}
+            for op_id, start_time in schedule.items():
+                result_schedule[ops[op_id]] = start_time
+
+            return result_schedule
+
+        worker = Worker(sched_task)
+        worker.signals.result.connect(self.on_sched_success)
+        worker.signals.error.connect(self.on_error)
+        worker.signals.finished.connect(lambda: self._reset_btn(self.run_sched_btn, "Run MicroScheduler"))
+        self.threadpool.start(worker)
+
+    def on_sched_success(self, schedule):
+        text = self.sched_output.toPlainText()
+        text += "\n\nScheduled Times:\n"
+        for node, start_time in schedule.items():
+            text += f" - {node.op_id}: start={start_time}ns, end={start_time + node.duration_ns}ns\n"
+        self.sched_output.setPlainText(text)
+
+        # Plotting Timeline
+        self.sched_plot.clear()
+        ax = self.sched_plot.get_axes()
+
+        y_ticks = []
+        y_labels = []
+
+        for i, (node, start_time) in enumerate(schedule.items()):
+            end_time = start_time + node.duration_ns
+            ax.barh(i, end_time - start_time, left=start_time, height=0.5, color='skyblue', edgecolor='black')
+            ax.text(start_time + (end_time - start_time)/2, i, node.op_id, ha='center', va='center', color='black')
+            y_ticks.append(i)
+            y_labels.append(node.op_id)
+
+        ax.set_yticks(y_ticks)
+        ax.set_yticklabels(y_labels)
+        ax.set_xlabel("Time (ns)")
+        ax.set_title("MicroScheduler Timeline")
+        self.sched_plot.get_canvas().draw()
+        print("MicroScheduler run successfully.")
+
+    def init_distortion_tab(self):
+        layout = QVBoxLayout(self.distortion_tab)
+        group = QGroupBox("Iterative Tikhonov Pre-Distortion")
+        form = QFormLayout()
+
+        self.dist_kernel = QLineEdit()
+        self.dist_kernel.setPlaceholderText("e.g. 1.0, -0.1, 0.05")
+        form.addRow("Transfer Kernel (csv):", self.dist_kernel)
+
+        self.run_dist_btn = QPushButton("Apply Predistorter")
+        self.run_dist_btn.clicked.connect(self.run_distortion)
+        form.addRow("", self.run_dist_btn)
+
+        group.setLayout(form)
+        layout.addWidget(group)
+
+        self.dist_output = QTextEdit()
+        self.dist_output.setReadOnly(True)
+        layout.addWidget(self.dist_output)
+
+    def run_distortion(self):
+        self.run_dist_btn.setEnabled(False)
+        opt_panel = self.main_window.opt_panel
+        if not opt_panel.result or 'best_waveform' not in opt_panel.result:
+            self.dist_output.setPlainText("Error: No optimized pulse found to distort.")
+            self._reset_btn(self.run_dist_btn, "Apply Predistorter")
+            return
+
+        pulse = opt_panel.result['best_waveform']
+        kernel_str = self.dist_kernel.text()
+
+        def dist_task():
+            import torch
+            import numpy as np
+            from gradpulse.distortion import Predistorter
+
+            arr = pulse.numpy() if hasattr(pulse, "numpy") else np.array(pulse)
+            try:
+                if kernel_str:
+                    kernel = np.array([float(x.strip()) for x in kernel_str.split(',')])
+                else:
+                    # dummy kernel
+                    kernel = np.array([1.0, -0.2, 0.05, -0.01])
+            except:
+                kernel = np.array([1.0, -0.2, 0.05, -0.01])
+
+            distorter = Predistorter(torch.tensor(kernel, dtype=torch.float32))
+            # predistorter takes and returns tensors
+            distorted_pulse = distorter.predistort(torch.tensor(arr, dtype=torch.float32))
+            return distorted_pulse, kernel
+
+        worker = Worker(dist_task)
+        worker.signals.result.connect(self.on_dist_success)
+        worker.signals.error.connect(self.on_error)
+        worker.signals.finished.connect(lambda: self._reset_btn(self.run_dist_btn, "Apply Predistorter"))
+        self.threadpool.start(worker)
+
+    def on_dist_success(self, result):
+        distorted_pulse, kernel = result
+        self.dist_output.setPlainText(f"Predistortion applied successfully.\nKernel used: {kernel}\nDistorted Pulse shape: {distorted_pulse.shape}")
+
+    def init_benchmark_tab(self):
+        layout = QVBoxLayout(self.benchmark_tab)
+        group = QGroupBox("Benchmark: gradpulse vs qutip-qtrl")
+        form = QFormLayout()
+
+        self.bench_gate = QComboBox()
+        self.bench_gate.addItems(["cnot", "iswap", "cz"])
+        form.addRow("Target Gate:", self.bench_gate)
+
+        self.run_bench_btn = QPushButton("Run Benchmark")
+        self.run_bench_btn.clicked.connect(self.run_bench)
+        form.addRow("", self.run_bench_btn)
+
+        group.setLayout(form)
+        layout.addWidget(group)
+
+        self.bench_output = QTextEdit()
+        self.bench_output.setReadOnly(True)
+        self.bench_output.setStyleSheet("background-color: #1e1e1e; color: #d4d4d4; font-family: monospace;")
+        layout.addWidget(self.bench_output)
+
+    def run_bench(self):
+        self.run_bench_btn.setEnabled(False)
+        gate = self.bench_gate.currentText()
+
+        def bench_task():
+            from gradpulse.benchmark import run_benchmark
+            # Max iterations kept small for UI
+            res = run_benchmark(gate=gate, max_iter=20, verbose=False)
+            return res
+
+        worker = Worker(bench_task)
+        worker.signals.result.connect(self.on_bench_success)
+        worker.signals.error.connect(self.on_error)
+        worker.signals.finished.connect(lambda: self._reset_btn(self.run_bench_btn, "Run Benchmark"))
+        self.threadpool.start(worker)
+
+    def on_bench_success(self, res):
+        text = "--- Benchmark Results ---\n"
+        if "gradpulse" in res:
+            gp = res["gradpulse"]
+            text += f"gradpulse:\n  Fidelity: {gp.get('fidelity', 'N/A')}\n  Wall time: {gp.get('wall_s', 'N/A')} s\n  Iters: {gp.get('iters', 'N/A')}\n\n"
+        if "qutip_qtrl" in res:
+            qt = res["qutip_qtrl"]
+            text += f"qutip-qtrl:\n  Fidelity: {qt.get('fidelity', 'N/A')}\n  Wall time: {qt.get('wall_s', 'N/A')} s\n  Iters: {qt.get('iters', 'N/A')}\n"
+        self.bench_output.setPlainText(text)
