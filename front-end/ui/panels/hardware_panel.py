@@ -7,6 +7,8 @@ from PyQt6.QtCore import Qt
 from core.worker import Worker
 from gradpulse import openpulse_export
 from gradpulse.braket_bridge import estimate_experiment_cost
+from gradpulse.hardware import SimulatedBackend, calibrate_to_hardware
+from gradpulse.profiles import ParametricCouplerProfile
 
 class HardwarePanel(QWidget):
     def __init__(self, main_window):
@@ -62,7 +64,23 @@ class HardwarePanel(QWidget):
         braket_group.setLayout(braket_form)
         control_layout.addWidget(braket_group)
 
-        # Right Side: Text Editor for Generated Code
+        # Closed-Loop Calibration
+        calib_group = QGroupBox("Closed-Loop Calibration")
+        calib_form = QFormLayout()
+
+        self.calib_rounds = QSpinBox()
+        self.calib_rounds.setRange(1, 20)
+        self.calib_rounds.setValue(3)
+        calib_form.addRow("Rounds:", self.calib_rounds)
+
+        self.calib_btn = QPushButton("Run Hardware Calibration Loop")
+        self.calib_btn.clicked.connect(self.run_calibration)
+        calib_form.addRow("", self.calib_btn)
+
+        calib_group.setLayout(calib_form)
+        control_layout.addWidget(calib_group)
+
+        # Right Side: Text Editor for Generated Code / Output
         self.code_viewer = QTextEdit()
         self.code_viewer.setReadOnly(True)
         self.code_viewer.setStyleSheet("background-color: #1e1e1e; color: #d4d4d4; font-family: monospace; font-size: 13px;")
@@ -83,7 +101,17 @@ class HardwarePanel(QWidget):
         pulse = opt_panel.result['best_waveform']
 
         def export_task():
-            return openpulse_export.to_openpulse_program(pulse)
+            # iq_waveform will provide a dict with "iq" mapping to the correct format for to_openpulse_program if use_drag is True
+            # to_openpulse_program can also accept simple waveform array
+            try:
+                # First try to get the full IQ with DRAG if possible
+                if 'optimizer' in opt_panel.result:
+                    iq = opt_panel.result['optimizer'].iq_waveform(opt_panel.result['best_raw_param'])
+                    return openpulse_export.to_openpulse_program(iq)
+                else:
+                    return openpulse_export.to_openpulse_program(pulse)
+            except Exception as e:
+                 return f"Error exporting to OpenPulse: {e}\n\nFalling back to simple waveform array...\n" + openpulse_export.to_openpulse_program(pulse)
 
         worker = Worker(export_task)
         worker.signals.result.connect(self.on_export_success)
@@ -106,6 +134,37 @@ class HardwarePanel(QWidget):
 
         self.threadpool.start(worker)
 
+    def run_calibration(self):
+        self.calib_btn.setEnabled(False)
+        self.calib_btn.setText("Running...")
+        self.code_viewer.clear()
+
+        rounds = self.calib_rounds.value()
+
+        def calib_task():
+            opt_panel = self.main_window.opt_panel
+            if opt_panel.loaded_profile:
+                initial_profile = opt_panel.loaded_profile
+            else:
+                initial_profile = ParametricCouplerProfile()
+
+            # The SimulatedBackend emulates hardware behavior.
+            # In a real scenario, this would be BraketPulseBackend or similar.
+            backend = SimulatedBackend(initial_profile)
+
+            # Use small number of iterations for the GUI to remain somewhat responsive
+            # if we had progress tracking we could use more.
+            opt_kwargs = {"n_seeds": 1, "iterations": 20, "n_slices": 100}
+
+            return calibrate_to_hardware(initial_profile, backend, rounds=rounds, opt_kwargs=opt_kwargs)
+
+        worker = Worker(calib_task)
+        worker.signals.result.connect(self.on_calib_success)
+        worker.signals.error.connect(self.on_error)
+        worker.signals.finished.connect(lambda: self._reset_btn(self.calib_btn, "Run Hardware Calibration Loop"))
+
+        self.threadpool.start(worker)
+
     def on_export_success(self, code_str):
         self.code_viewer.setPlainText(code_str)
         print("OpenPulse export generated successfully.")
@@ -117,5 +176,28 @@ class HardwarePanel(QWidget):
         self.code_viewer.setPlainText(text)
         print(text)
 
+    def on_calib_success(self, calib_res):
+        history = calib_res.get('history', [])
+        refined_prof = calib_res.get('refined_profile', None)
+
+        text = "--- Calibration Loop Results ---\n\n"
+        for entry in history:
+            text += f"Round {entry.get('round')}:\n"
+            text += f"  Model F_avg:    {entry.get('f_model_avg', 0):.5f}\n"
+            text += f"  Hardware F_avg: {entry.get('f_hardware_avg', 0):.5f}\n"
+            text += f"  Gap:            {entry.get('gap', 0):.5e}\n"
+            text += f"  Coherence Scale:{entry.get('coherence_scale', 0):.5f}\n\n"
+
+        if refined_prof:
+            text += "--- Final Refined Profile ---\n"
+            text += f"T1 Q1: {refined_prof.t1_ns_q1} ns\n"
+            text += f"T2 Q1: {refined_prof.t2_ns_q1} ns\n"
+
+        self.code_viewer.setPlainText(text)
+
     def on_error(self, error):
         print(f"Error during hardware operation: {error[1]}")
+
+    def _reset_btn(self, btn, text):
+        btn.setEnabled(True)
+        btn.setText(text)
