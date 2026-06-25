@@ -67,6 +67,11 @@ class AdvancedPanel(QWidget):
         self.init_benchmark_tab()
         self.tabs.addTab(self.benchmark_tab, "Benchmarking")
 
+        # 8. MPS Evaluator Tab
+        self.mps_tab = QWidget()
+        self.init_mps_tab()
+        self.tabs.addTab(self.mps_tab, "MPS Evaluator")
+
         layout.addWidget(self.tabs)
 
     def init_rl_tab(self):
@@ -571,6 +576,43 @@ class AdvancedPanel(QWidget):
         self.bench_output.setStyleSheet("background-color: #1e1e1e; color: #d4d4d4; font-family: monospace;")
         layout.addWidget(self.bench_output)
 
+    def init_mps_tab(self):
+        layout = QVBoxLayout(self.mps_tab)
+        splitter = QSplitter(Qt.Orientation.Horizontal)
+
+        control_widget = QWidget()
+        control_layout = QVBoxLayout(control_widget)
+
+        group = QGroupBox("MPS Witness Evaluator")
+        form = QFormLayout()
+
+        self.mps_chi_max = QSpinBox()
+        self.mps_chi_max.setRange(4, 256)
+        self.mps_chi_max.setValue(64)
+        form.addRow("Max Bond Dimension (chi):", self.mps_chi_max)
+
+        self.mps_n_traj = QSpinBox()
+        self.mps_n_traj.setRange(10, 1000)
+        self.mps_n_traj.setValue(200)
+        form.addRow("Trajectories:", self.mps_n_traj)
+
+        self.run_mps_btn = QPushButton("Run MPS Witness")
+        self.run_mps_btn.clicked.connect(self.run_mps)
+        form.addRow("", self.run_mps_btn)
+
+        group.setLayout(form)
+        control_layout.addWidget(group)
+
+        self.mps_output = QTextEdit()
+        self.mps_output.setReadOnly(True)
+        self.mps_output.setStyleSheet("background-color: #1e1e1e; color: #d4d4d4; font-family: monospace;")
+
+        splitter.addWidget(control_widget)
+        splitter.addWidget(self.mps_output)
+        splitter.setSizes([300, 700])
+
+        layout.addWidget(splitter)
+
     def run_bench(self):
         self.run_bench_btn.setEnabled(False)
         gate = self.bench_gate.currentText()
@@ -596,3 +638,50 @@ class AdvancedPanel(QWidget):
             qt = res["qutip_qtrl"]
             text += f"qutip-qtrl:\n  Fidelity: {qt.get('fidelity', 'N/A')}\n  Wall time: {qt.get('wall_s', 'N/A')} s\n  Iters: {qt.get('iters', 'N/A')}\n"
         self.bench_output.setPlainText(text)
+
+    def run_mps(self):
+        self.run_mps_btn.setEnabled(False)
+        self.run_mps_btn.setText("Running...")
+        self.mps_output.clear()
+
+        chi_max = self.mps_chi_max.value()
+        n_traj = self.mps_n_traj.value()
+
+        def mps_task():
+            opt_panel = self.main_window.opt_panel
+            if not opt_panel.result or 'best_waveform' not in opt_panel.result:
+                raise ValueError("No active optimization result found. Please run an optimization first.")
+            result = opt_panel.result
+            if 'optimizer' not in result:
+                raise ValueError("Optimization result missing 'optimizer' key.")
+
+            opt = result['optimizer']
+            pulse = result['best_waveform']
+
+            from gradpulse.mps import ChainTEBD
+            import numpy as np
+            import itertools
+
+            # Assuming we are running on MultiQubitOptimizer with open system
+            if not hasattr(opt, 'profile') or not hasattr(opt.profile, 'n_qubits'):
+                raise ValueError("MPS evaluator requires a MultiQubitOptimizer with defined n_qubits.")
+
+            n_qubits = opt.profile.n_qubits
+
+            # Simple ensemble: computational basis states
+            ensemble = list(itertools.product([0, 1], repeat=n_qubits))
+
+            tebd = ChainTEBD.from_optimizer(opt)
+            return tebd.witness_open(ensemble, pulse, dt_ns=1.0, chi_max=chi_max, n_traj=n_traj)
+
+        worker = Worker(mps_task)
+        worker.signals.result.connect(self.on_mps_success)
+        worker.signals.error.connect(self.on_error)
+        worker.signals.finished.connect(lambda: self._reset_btn(self.run_mps_btn, "Run MPS Witness"))
+        self.threadpool.start(worker)
+
+    def on_mps_success(self, mps_res):
+        text = "--- MPS Witness Results ---\n"
+        for k, v in mps_res.items():
+            text += f"{k}: {v}\n"
+        self.mps_output.setPlainText(text)

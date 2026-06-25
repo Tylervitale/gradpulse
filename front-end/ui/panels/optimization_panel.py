@@ -84,6 +84,10 @@ class OptimizationPanel(QWidget):
         self.seeds_spin.setValue(2)
         opt_form.addRow("Seeds:", self.seeds_spin)
 
+        self.fidelity_combo = QComboBox()
+        self.fidelity_combo.addItems(["choi", "state_transfer", "cz_data_virtualz"])
+        opt_form.addRow("Fidelity Mode (N-Qubit):", self.fidelity_combo)
+
         opt_group.setLayout(opt_form)
         control_layout.addWidget(opt_group)
 
@@ -173,6 +177,7 @@ class OptimizationPanel(QWidget):
         iterations = self.iters_spin.value()
         n_seeds = self.seeds_spin.value()
         spectral = self.spectral_check.isChecked()
+        fidelity_mode = self.fidelity_combo.currentText()
 
         t1 = self.t1_spin.value()
         t2 = self.t2_spin.value()
@@ -198,7 +203,7 @@ class OptimizationPanel(QWidget):
                 elif "N-Qubit" in gate:
                     # N-Qubit does not support spectral mode, fallback to standard or raise error
                     opt = MultiQubitOptimizer(profile=profile, target_gate="cz", target_qubits=(0,1))
-                    return opt.optimize(n_slices=n_slices, iterations=iterations, n_seeds=n_seeds)
+                    return opt.optimize(n_slices=n_slices, iterations=iterations, n_seeds=n_seeds, fidelity=fidelity_mode)
                 else:
                     target = "cz" if "CZ" in gate else ("iswap" if "iSWAP" in gate else "cz")
                     opt = ParametricCZOptimizer(profile=profile, target_gate=target)
@@ -216,7 +221,7 @@ class OptimizationPanel(QWidget):
                     return opt.optimize(n_slices=n_slices, iterations=iterations, n_seeds=n_seeds)
                 elif gate == "N-Qubit CZ":
                     opt = MultiQubitOptimizer(profile=profile, target_gate="cz", target_qubits=(0,1))
-                    return opt.optimize(n_slices=n_slices, iterations=iterations, n_seeds=n_seeds)
+                    return opt.optimize(n_slices=n_slices, iterations=iterations, n_seeds=n_seeds, fidelity=fidelity_mode)
 
         worker = Worker(opt_task)
         worker.signals.result.connect(self.on_optimization_success)

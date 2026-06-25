@@ -13,7 +13,7 @@ from gradpulse.profiles import ParametricCouplerProfile
 from gradpulse.crossresonance import CrossResonanceProfile
 from gradpulse.analysis import ParametricCZAnalysisMixin
 import numpy as np
-from gradpulse.viz import plot_error_budget, plot_robustness
+from gradpulse.viz import plot_error_budget, plot_robustness, plot_state_heatmap, plot_bloch_trajectory
 from gradpulse.rb import interleaved_rb, native_superops, gate_superoperator
 from gradpulse.headtohead import run_head_to_head
 
@@ -46,6 +46,11 @@ class AnalysisPanel(QWidget):
         self.h2h_tab = QWidget()
         self.init_h2h_tab()
         self.tabs.addTab(self.h2h_tab, "Head-to-Head")
+
+        # 4. Advanced Diagnostics Tab
+        self.adv_diag_tab = QWidget()
+        self.init_adv_diag_tab()
+        self.tabs.addTab(self.adv_diag_tab, "Advanced Diagnostics")
 
         layout.addWidget(self.tabs)
 
@@ -92,7 +97,7 @@ class AnalysisPanel(QWidget):
         plot_group = QGroupBox("Plot Options")
         plot_layout = QVBoxLayout()
         self.plot_combo = QComboBox()
-        self.plot_combo.addItems(["Error Budget", "Robustness Sweep", "Pulse Spectrogram"])
+        self.plot_combo.addItems(["Error Budget", "Robustness Sweep", "Pulse Spectrogram", "State Heatmap", "Bloch Trajectory"])
         self.plot_btn = QPushButton("Generate Plot")
         self.plot_btn.clicked.connect(self.generate_plot)
         self.plot_btn.setEnabled(False)
@@ -188,6 +193,39 @@ class AnalysisPanel(QWidget):
 
         layout.addWidget(splitter)
 
+    def init_adv_diag_tab(self):
+        layout = QVBoxLayout(self.adv_diag_tab)
+
+        splitter = QSplitter(Qt.Orientation.Horizontal)
+
+        control_widget = QWidget()
+        control_layout = QVBoxLayout(control_widget)
+        control_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
+
+        diag_group = QGroupBox("Diagnostic Tool")
+        diag_form = QFormLayout()
+
+        self.diag_combo = QComboBox()
+        self.diag_combo.addItems(["Quasi-Static Fidelity", "Colored Noise Fidelity", "Spectator Fidelity", "TLS Defect Fidelity"])
+        diag_form.addRow("Diagnostic:", self.diag_combo)
+
+        self.run_diag_btn = QPushButton("Run Diagnostic")
+        self.run_diag_btn.clicked.connect(self.run_diagnostic)
+        diag_form.addRow("", self.run_diag_btn)
+
+        diag_group.setLayout(diag_form)
+        control_layout.addWidget(diag_group)
+
+        self.diag_output = QTextEdit()
+        self.diag_output.setReadOnly(True)
+        self.diag_output.setStyleSheet("background-color: #1e1e1e; color: #d4d4d4; font-family: monospace;")
+
+        splitter.addWidget(control_widget)
+        splitter.addWidget(self.diag_output)
+        splitter.setSizes([300, 700])
+
+        layout.addWidget(splitter)
+
 
     def load_pulse(self):
         file_name, _ = QFileDialog.getOpenFileName(self, "Open Pulse JSON", "", "JSON Files (*.json)")
@@ -268,6 +306,11 @@ class AnalysisPanel(QWidget):
             elif plot_type == "Pulse Spectrogram":
                 from gradpulse.viz import plot_spectrogram
                 return "spectrogram", result['best_waveform']
+            elif plot_type == "State Heatmap":
+                # Assuming state heatmap uses result directly or needs a specific eval
+                return "state_heatmap", result
+            elif plot_type == "Bloch Trajectory":
+                return "bloch_trajectory", result
 
         worker = Worker(plot_task)
         worker.signals.result.connect(self.on_plot_success)
@@ -334,6 +377,40 @@ class AnalysisPanel(QWidget):
 
         self.threadpool.start(worker)
 
+    def run_diagnostic(self):
+        self.run_diag_btn.setEnabled(False)
+        self.run_diag_btn.setText("Running...")
+        self.diag_output.clear()
+
+        diag_type = self.diag_combo.currentText()
+
+        def diag_task():
+            opt_panel = self.main_window.opt_panel
+            if not opt_panel.result or 'best_waveform' not in opt_panel.result:
+                raise ValueError("No active optimization result found. Please run an optimization first.")
+            result = opt_panel.result
+            if 'optimizer' not in result:
+                raise ValueError("Optimization result missing 'optimizer' key.")
+
+            opt = result['optimizer']
+            raw_param = result.get('best_raw_param', None)
+
+            if diag_type == "Quasi-Static Fidelity":
+                return diag_type, opt.quasi_static_fidelity(raw_param)
+            elif diag_type == "Colored Noise Fidelity":
+                return diag_type, opt.colored_noise_fidelity(raw_param)
+            elif diag_type == "Spectator Fidelity":
+                return diag_type, opt.spectator_fidelity(raw_param)
+            elif diag_type == "TLS Defect Fidelity":
+                return diag_type, opt.tls_defect_fidelity(raw_param)
+
+        worker = Worker(diag_task)
+        worker.signals.result.connect(self.on_diag_success)
+        worker.signals.error.connect(self.on_error)
+        worker.signals.finished.connect(lambda: self._reset_btn(self.run_diag_btn, "Run Diagnostic"))
+        self.threadpool.start(worker)
+
+
     def on_val_success(self, result):
         print(f"QuTiP Validation Result: Gap = {result.get('delta', result.get('gap', 'N/A'))}")
 
@@ -354,6 +431,10 @@ class AnalysisPanel(QWidget):
         elif ptype == "spectrogram":
             from gradpulse.viz import plot_spectrogram
             plot_spectrogram(data, ax=self.plot_widget.get_axes())
+        elif ptype == "state_heatmap":
+            plot_state_heatmap(data, ax=self.plot_widget.get_axes())
+        elif ptype == "bloch_trajectory":
+            plot_bloch_trajectory(data, ax=self.plot_widget.get_axes())
 
         self.plot_widget.canvas.draw()
 
@@ -374,6 +455,19 @@ class AnalysisPanel(QWidget):
         text += f"Pulse Shaping Adv.: {summary.get('pulse_shaping_advantage', 'N/A')}\n"
         text += f"Duration Selection Adv.: {summary.get('duration_selection_advantage', 'N/A')}\n"
         self.h2h_output.setPlainText(text)
+
+    def on_diag_success(self, diag_res):
+        dtype, data = diag_res
+        text = f"--- {dtype} Results ---\n"
+
+        if isinstance(data, dict):
+            for k, v in data.items():
+                text += f"{k}: {v}\n"
+        else:
+             text += f"Value: {data}\n"
+
+        self.diag_output.setPlainText(text)
+
 
     def on_error(self, error):
         print(f"Error during analysis task: {error[1]}")
