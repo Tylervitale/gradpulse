@@ -6,7 +6,7 @@ from PyQt6.QtCore import Qt
 
 from core.worker import Worker
 from gradpulse import openpulse_export
-from gradpulse.braket_bridge import estimate_experiment_cost
+from gradpulse.braket_bridge import estimate_experiment_cost, hardware_readiness_report
 from gradpulse.hardware import SimulatedBackend, calibrate_to_hardware
 from gradpulse.profiles import ParametricCouplerProfile
 
@@ -29,12 +29,20 @@ class HardwarePanel(QWidget):
         control_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
 
         # OpenPulse Export
-        op_group = QGroupBox("OpenPulse 3.0 Export")
+        op_group = QGroupBox("Export Options")
         op_layout = QVBoxLayout()
 
         self.export_btn = QPushButton("Generate OpenPulse Code")
         self.export_btn.clicked.connect(self.generate_openpulse)
         op_layout.addWidget(self.export_btn)
+
+        self.qiskit_btn = QPushButton("Generate Qiskit Schedule")
+        self.qiskit_btn.clicked.connect(self.generate_qiskit)
+        op_layout.addWidget(self.qiskit_btn)
+
+        self.op_report_btn = QPushButton("OpenPulse Readiness Report")
+        self.op_report_btn.clicked.connect(self.openpulse_readiness)
+        op_layout.addWidget(self.op_report_btn)
 
         op_group.setLayout(op_layout)
         control_layout.addWidget(op_group)
@@ -60,6 +68,10 @@ class HardwarePanel(QWidget):
         self.cost_btn = QPushButton("Estimate Cost")
         self.cost_btn.clicked.connect(self.estimate_cost)
         braket_form.addRow("", self.cost_btn)
+
+        self.hw_report_btn = QPushButton("Hardware Readiness Report")
+        self.hw_report_btn.clicked.connect(self.hardware_readiness)
+        braket_form.addRow("", self.hw_report_btn)
 
         braket_group.setLayout(braket_form)
         control_layout.addWidget(braket_group)
@@ -102,6 +114,66 @@ class HardwarePanel(QWidget):
         worker.signals.result.connect(self.on_export_success)
         worker.signals.error.connect(self.on_error)
 
+        self.threadpool.start(worker)
+
+    def generate_qiskit(self):
+        opt_panel = self.main_window.opt_panel
+        if not opt_panel.result or 'best_waveform' not in opt_panel.result:
+            self.code_viewer.setPlainText("No valid pulse found. Please run an optimization first in the 'Optimization' tab.")
+            return
+
+        pulse = opt_panel.result['best_waveform']
+
+        def qiskit_task():
+            try:
+                # Requires qiskit.pulse which is removed in Qiskit 2.0
+                schedule = openpulse_export.to_qiskit_schedule(pulse)
+                return str(schedule)
+            except Exception as e:
+                return f"Error exporting to Qiskit Schedule:\n{e}"
+
+        worker = Worker(qiskit_task)
+        worker.signals.result.connect(self.on_export_success)
+        worker.signals.error.connect(self.on_error)
+
+        self.threadpool.start(worker)
+
+    def openpulse_readiness(self):
+        opt_panel = self.main_window.opt_panel
+        if not opt_panel.result or 'best_waveform' not in opt_panel.result:
+            self.code_viewer.setPlainText("No valid pulse found. Please run an optimization first.")
+            return
+
+        pulse = opt_panel.result['best_waveform']
+
+        def report_task():
+            import numpy as np
+            arr = pulse.numpy() if hasattr(pulse, "numpy") else np.array(pulse)
+            report = openpulse_export.openpulse_readiness_report(arr, verbose=False)
+            return "--- OpenPulse Readiness Report ---\n" + "\n".join(f"{k}: {v}" for k, v in report.items())
+
+        worker = Worker(report_task)
+        worker.signals.result.connect(self.on_export_success)
+        worker.signals.error.connect(self.on_error)
+        self.threadpool.start(worker)
+
+    def hardware_readiness(self):
+        opt_panel = self.main_window.opt_panel
+        if not opt_panel.result or 'best_waveform' not in opt_panel.result:
+            self.code_viewer.setPlainText("No valid pulse found. Please run an optimization first.")
+            return
+
+        pulse = opt_panel.result['best_waveform']
+
+        def report_task():
+            import numpy as np
+            arr = pulse.numpy() if hasattr(pulse, "numpy") else np.array(pulse)
+            report = hardware_readiness_report(arr, verbose=False)
+            return "--- Hardware Readiness Report ---\n" + "\n".join(f"{k}: {v}" for k, v in report.items())
+
+        worker = Worker(report_task)
+        worker.signals.result.connect(self.on_export_success)
+        worker.signals.error.connect(self.on_error)
         self.threadpool.start(worker)
 
     def estimate_cost(self):

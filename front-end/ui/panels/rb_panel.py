@@ -35,6 +35,10 @@ class RBPanel(QWidget):
         self.run_rb_btn.clicked.connect(self.run_rb)
         rb_form.addRow("", self.run_rb_btn)
 
+        self.run_unitarity_btn = QPushButton("Run Unitarity RB")
+        self.run_unitarity_btn.clicked.connect(self.run_unitarity)
+        rb_form.addRow("", self.run_unitarity_btn)
+
         rb_group.setLayout(rb_form)
         control_layout.addWidget(rb_group)
 
@@ -78,6 +82,33 @@ class RBPanel(QWidget):
 
         self.threadpool.start(worker)
 
+    def run_unitarity(self):
+        self.run_unitarity_btn.setEnabled(False)
+        self.run_unitarity_btn.setText("Running...")
+        self.rb_output.clear()
+
+        def unitarity_task():
+            import sys
+            import os
+            from pathlib import Path
+            # Path to examples directory
+            root_dir = Path(__file__).resolve().parent.parent.parent.parent
+            unitarity_script = root_dir / "examples" / "unitarity_rb.py"
+
+            if not unitarity_script.exists():
+                return "Error: Could not find examples/unitarity_rb.py"
+
+            import subprocess
+            result = subprocess.run([sys.executable, str(unitarity_script)], capture_output=True, text=True)
+            return result.stdout
+
+        worker = Worker(unitarity_task)
+        worker.signals.result.connect(self.on_unitarity_success)
+        worker.signals.error.connect(self.on_error)
+        worker.signals.finished.connect(lambda: self._reset_btn(self.run_unitarity_btn, "Run Unitarity RB"))
+
+        self.threadpool.start(worker)
+
     def on_rb_success(self, rb_res):
         text = "--- IRB Results ---\n"
         text += f"Naive CZ Error: {rb_res.get('r_cz_naive', 'N/A')}\n"
@@ -85,6 +116,9 @@ class RBPanel(QWidget):
         text += f"CZ Fidelity (IRB): {rb_res.get('f_cz_irb', 'N/A')}\n"
         text += f"Leakage/Clifford (L1): {rb_res.get('leakage_per_clifford_L1', 'N/A')}\n"
         self.rb_output.setPlainText(text)
+
+    def on_unitarity_success(self, result_text):
+        self.rb_output.setPlainText("--- Unitarity RB Script Output ---\n\n" + result_text)
 
     def on_error(self, error):
         print(f"RB Error: {error[1]}")
