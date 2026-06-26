@@ -1,6 +1,6 @@
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QFormLayout, QGroupBox, QSpinBox,
-    QPushButton, QTextEdit, QSplitter
+    QPushButton, QTextEdit, QSplitter, QComboBox
 )
 from PyQt6.QtCore import Qt
 
@@ -32,6 +32,10 @@ class CalibrationPanel(QWidget):
         self.calib_rounds.setValue(3)
         calib_form.addRow("Rounds:", self.calib_rounds)
 
+        self.backend_combo = QComboBox()
+        self.backend_combo.addItems(["SimulatedBackend", "QuTiPDeviceBackend"])
+        calib_form.addRow("Backend:", self.backend_combo)
+
         self.calib_btn = QPushButton("Run Hardware Calibration Loop")
         self.calib_btn.clicked.connect(self.run_calibration)
         calib_form.addRow("", self.calib_btn)
@@ -56,6 +60,8 @@ class CalibrationPanel(QWidget):
 
         rounds = self.calib_rounds.value()
 
+        backend_type = self.backend_combo.currentText()
+
         def calib_task():
             # Use active profile from main_window
             if self.main_window.active_profile:
@@ -64,8 +70,11 @@ class CalibrationPanel(QWidget):
                 initial_profile = ParametricCouplerProfile()
 
             # The SimulatedBackend emulates hardware behavior.
-            # In a real scenario, this would be BraketPulseBackend or similar.
-            backend = SimulatedBackend(initial_profile)
+            if backend_type == "QuTiPDeviceBackend":
+                from gradpulse.hardware import QuTiPDeviceBackend
+                backend = QuTiPDeviceBackend(initial_profile)
+            else:
+                backend = SimulatedBackend(initial_profile)
 
             # Use small number of iterations for the GUI to remain somewhat responsive
             opt_kwargs = {"n_seeds": 1, "iterations": 20, "n_slices": 100}
