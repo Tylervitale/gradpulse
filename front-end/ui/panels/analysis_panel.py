@@ -16,6 +16,20 @@ import numpy as np
 from gradpulse.viz import plot_error_budget, plot_robustness, plot_state_heatmap, plot_bloch_trajectory
 from gradpulse.rb import interleaved_rb, native_superops, gate_superoperator
 from gradpulse.headtohead import run_head_to_head
+from gradpulse.literature import (
+    analytic_coherence_limit_epg,
+    anchor_to_profiles,
+    discover_anchors,
+    format_report,
+    gate_config,
+    judge,
+    judge_analytic,
+    load_anchor,
+)
+from gradpulse import ParametricCZOptimizer
+import pathlib
+
+ANCHOR_DIR = pathlib.Path(__file__).parent.parent.parent.parent / "examples" / "anchors"
 
 class AnalysisPanel(QWidget):
     def __init__(self, main_window):
@@ -51,6 +65,11 @@ class AnalysisPanel(QWidget):
         self.adv_diag_tab = QWidget()
         self.init_adv_diag_tab()
         self.tabs.addTab(self.adv_diag_tab, "Advanced Diagnostics")
+
+        # 5. Literature Validation Tab
+        self.lit_tab = QWidget()
+        self.init_lit_tab()
+        self.tabs.addTab(self.lit_tab, "Literature Validation")
 
         layout.addWidget(self.tabs)
 
@@ -106,12 +125,19 @@ class AnalysisPanel(QWidget):
         plot_group.setLayout(plot_layout)
         control_layout.addWidget(plot_group)
 
+        # Validation Output Text
+        self.val_output = QTextEdit()
+        self.val_output.setReadOnly(True)
+        self.val_output.setStyleSheet("background-color: #1e1e1e; color: #d4d4d4; font-family: monospace; max-height: 150px;")
+        control_layout.addWidget(QLabel("Validation Logs:"))
+        control_layout.addWidget(self.val_output)
+
         # 3. Main Viewer (Right)
         self.plot_widget = MatplotlibWidget()
 
         splitter.addWidget(control_widget)
         splitter.addWidget(self.plot_widget)
-        splitter.setSizes([300, 700])
+        splitter.setSizes([400, 600])
 
         layout.addWidget(splitter)
 
@@ -222,6 +248,42 @@ class AnalysisPanel(QWidget):
 
         splitter.addWidget(control_widget)
         splitter.addWidget(self.diag_output)
+        splitter.setSizes([300, 700])
+
+        layout.addWidget(splitter)
+
+    def init_lit_tab(self):
+        layout = QVBoxLayout(self.lit_tab)
+
+        splitter = QSplitter(Qt.Orientation.Horizontal)
+
+        control_widget = QWidget()
+        control_layout = QVBoxLayout(control_widget)
+        control_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
+
+        lit_group = QGroupBox("Literature Hardware Anchors")
+        lit_form = QFormLayout()
+
+        self.anchor_combo = QComboBox()
+        self.anchors_list = discover_anchors(ANCHOR_DIR)
+        for anchor_path in self.anchors_list:
+            self.anchor_combo.addItem(anchor_path.name, userData=anchor_path)
+
+        lit_form.addRow("Select Anchor:", self.anchor_combo)
+
+        self.run_lit_btn = QPushButton("Judge Decoherence Model")
+        self.run_lit_btn.clicked.connect(self.run_literature)
+        lit_form.addRow("", self.run_lit_btn)
+
+        lit_group.setLayout(lit_form)
+        control_layout.addWidget(lit_group)
+
+        self.lit_output = QTextEdit()
+        self.lit_output.setReadOnly(True)
+        self.lit_output.setStyleSheet("background-color: #1e1e1e; color: #d4d4d4; font-family: monospace;")
+
+        splitter.addWidget(control_widget)
+        splitter.addWidget(self.lit_output)
         splitter.setSizes([300, 700])
 
         layout.addWidget(splitter)
@@ -412,9 +474,24 @@ class AnalysisPanel(QWidget):
 
 
     def on_val_success(self, result):
-        print(f"QuTiP Validation Result: Gap = {result.get('delta', result.get('gap', 'N/A'))}")
+        gap = result.get('delta', result.get('gap', 'N/A'))
+        if isinstance(gap, float):
+             gap = f"{gap:.5e}"
+
+        text = "--- QuTiP Cross-Check ---\n"
+        for k, v in result.items():
+             if isinstance(v, float):
+                 text += f"{k}: {v:.6f}\n"
+             else:
+                 text += f"{k}: {v}\n"
+
+        self.val_output.setPlainText(text)
+        print(f"QuTiP Validation Result: Gap = {gap}")
 
     def on_liouville_success(self, result):
+        text = "--- Liouville Check ---\n"
+        text += f"F_proc: {result:.6f}\n"
+        self.val_output.setPlainText(text)
         print(f"Liouville check result: F_proc = {result}")
 
     def on_plot_success(self, result_tuple):
@@ -448,12 +525,40 @@ class AnalysisPanel(QWidget):
 
     def on_h2h_success(self, h2h_res):
         summary = h2h_res.get('summary', {})
+        rows = h2h_res.get('rows', [])
+
         text = "--- Head-to-Head Summary ---\n"
         text += f"In-Loop Chosen Duration: {summary.get('in_loop_best_duration', 'N/A')} ns\n"
         text += f"Multiply-After Chosen Duration: {summary.get('multiply_after_best_duration', 'N/A')} ns\n"
-        text += f"Delivered Gap: {summary.get('delivered_gap', 'N/A')}\n"
-        text += f"Pulse Shaping Adv.: {summary.get('pulse_shaping_advantage', 'N/A')}\n"
-        text += f"Duration Selection Adv.: {summary.get('duration_selection_advantage', 'N/A')}\n"
+
+        # Format values if they are floats
+        delivered_gap = summary.get('delivered_gap', 'N/A')
+        pulse_shaping = summary.get('pulse_shaping_advantage', 'N/A')
+        duration_sel = summary.get('duration_selection_advantage', 'N/A')
+
+        if isinstance(delivered_gap, float):
+             text += f"Delivered Gap: {delivered_gap:.5e}\n"
+        else:
+             text += f"Delivered Gap: {delivered_gap}\n"
+
+        if isinstance(pulse_shaping, float):
+             text += f"Pulse Shaping Adv.: {pulse_shaping:.5e}\n"
+        else:
+             text += f"Pulse Shaping Adv.: {pulse_shaping}\n"
+
+        if isinstance(duration_sel, float):
+             text += f"Duration Selection Adv.: {duration_sel:.5e}\n\n"
+        else:
+             text += f"Duration Selection Adv.: {duration_sel}\n\n"
+
+        text += "--- Details per Duration ---\n"
+        for row in rows:
+            text += f"Duration {row['duration_ns']} ns:\n"
+            text += f"  In-Loop F_proc: {row['f_proc_in_loop']:.5f}\n"
+            text += f"  Mult-After Delivered F_proc: {row['f_proc_multiply_after_delivered']:.5f}\n"
+            text += f"  Mult-After Coherent F_proc: {row['f_proc_multiply_after_coherent']:.5f}\n"
+            text += f"  Mult-After Predicted F_proc: {row['f_proc_multiply_after_predicted']:.5f}\n\n"
+
         self.h2h_output.setPlainText(text)
 
     def on_diag_success(self, diag_res):
@@ -475,3 +580,66 @@ class AnalysisPanel(QWidget):
     def _reset_btn(self, btn, text):
         btn.setEnabled(True)
         btn.setText(text)
+
+    def run_literature(self):
+        self.run_lit_btn.setEnabled(False)
+        self.run_lit_btn.setText("Judging...")
+        self.lit_output.clear()
+
+        anchor_path = self.anchor_combo.currentData()
+
+        def lit_task():
+            if not anchor_path:
+                raise ValueError("No anchor selected.")
+
+            anchor = load_anchor(anchor_path)
+            gcfg = gate_config(anchor)
+
+            prof_none, prof_t1, prof_full = anchor_to_profiles(anchor)
+
+            # GRAPE-independent analytic floor from the measured T1/T2 and gate duration.
+            analytic = analytic_coherence_limit_epg(prof_full, gcfg["n_slices"] * gcfg["dt_ns"])
+
+            if anchor["validation"].get("floor_method", "grape") == "analytic":
+                verdict = judge_analytic(anchor, analytic)
+                report = format_report(verdict)
+                return verdict, report
+
+            # Helper to run optimization
+            def _run(prof):
+                if gcfg["kind"] != "cz":
+                    raise NotImplementedError(
+                        f"gate kind '{gcfg['kind']}' is not wired into the validation driver yet "
+                        "(only 'cz'). Extend to target it."
+                    )
+                opt = ParametricCZOptimizer(
+                    prof, bandwidth_mhz=gcfg["bandwidth_mhz"], use_drag=gcfg["use_drag"],
+                    drag_order=gcfg["drag_order"], n_channels=gcfg["n_channels"],
+                    precision=gcfg["precision"],
+                )
+
+                # We use lower iterations for GUI speed unless we want to be exact.
+                # Here we use 100 for GUI speed. Can be increased for full check.
+                res = opt.optimize_multi_seed(
+                    n_slices=gcfg["n_slices"], dt_ns=gcfg["dt_ns"],
+                    n_seeds=gcfg["n_seeds"], iterations=100,
+                )
+                return res["best_fidelity"]
+
+            f_coh = _run(prof_none)
+            f_t1 = _run(prof_t1)
+            f_full = _run(prof_full)
+            verdict = judge(anchor, f_coh, f_t1, f_full, analytic_epg=analytic)
+            report = format_report(verdict)
+            return verdict, report
+
+        worker = Worker(lit_task)
+        worker.signals.result.connect(self.on_lit_success)
+        worker.signals.error.connect(self.on_error)
+        worker.signals.finished.connect(lambda: self._reset_btn(self.run_lit_btn, "Judge Decoherence Model"))
+        self.threadpool.start(worker)
+
+    def on_lit_success(self, res):
+        verdict, report = res
+        self.lit_output.setPlainText(report)
+        print(f"Literature validation complete for {verdict.get('name', 'Unknown')}.")
