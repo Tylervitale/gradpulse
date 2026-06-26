@@ -6,7 +6,7 @@ from PyQt6.QtCore import Qt
 
 from core.worker import Worker
 from gradpulse import rl
-from gradpulse.compression import compress_rle, verify_compression
+from gradpulse.compression import compress_rle, compress_delta, compress_spline, verify_compression
 
 from PyQt6.QtWidgets import QComboBox, QLineEdit, QListWidget, QTextEdit, QSplitter
 from gradpulse.dlp import Rule, Proposition, SoftLogic, SoftRelational
@@ -96,8 +96,13 @@ class AdvancedPanel(QWidget):
     def init_compress_tab(self):
         layout = QVBoxLayout(self.compress_tab)
 
-        group = QGroupBox("Run-Length Encoding (RLE)")
+        group = QGroupBox("Waveform Compression")
         vbox = QVBoxLayout()
+
+        self.compress_method_combo = QComboBox()
+        self.compress_method_combo.addItems(["RLE", "Delta", "Spline"])
+        vbox.addWidget(QLabel("Compression Method:"))
+        vbox.addWidget(self.compress_method_combo)
 
         self.compress_btn = QPushButton("Compress Current Optimized Pulse")
         self.compress_btn.clicked.connect(self.run_compression)
@@ -115,6 +120,10 @@ class AdvancedPanel(QWidget):
 
         group = QGroupBox("Zero-Noise Extrapolation Configuration")
         form = QFormLayout()
+
+        self.zne_method_combo = QComboBox()
+        self.zne_method_combo.addItems(["stretch", "fold"])
+        form.addRow("Scaling Method:", self.zne_method_combo)
 
         self.zne_scale = QDoubleSpinBox()
         self.zne_scale.setRange(1.0, 5.0)
@@ -160,7 +169,15 @@ class AdvancedPanel(QWidget):
             import numpy as np
             # Convert torch tensor if needed to numpy
             arr = pulse.numpy() if hasattr(pulse, "numpy") else np.array(pulse)
-            compressed = compress_rle(arr)
+            method = self.compress_method_combo.currentText()
+
+            if method == "RLE":
+                compressed = compress_rle(arr)
+            elif method == "Delta":
+                compressed = compress_delta(arr)
+            elif method == "Spline":
+                compressed = compress_spline(arr)
+
             valid = verify_compression(arr, compressed)
             return compressed, valid, arr.nbytes
 
@@ -183,11 +200,15 @@ class AdvancedPanel(QWidget):
 
         pulse = opt_panel.result['best_waveform']
 
+        method = self.zne_method_combo.currentText()
         def zne_task():
-            from gradpulse.mitigation import stretch_pulse
+            from gradpulse.mitigation import stretch_pulse, fold_pulse
             import numpy as np
             arr = pulse.numpy() if hasattr(pulse, "numpy") else np.array(pulse)
-            scaled = stretch_pulse(arr, scale)
+            if method == "fold":
+                scaled = fold_pulse(arr, scale)
+            else:
+                scaled = stretch_pulse(arr, scale)
             return scaled
 
         worker = Worker(zne_task)

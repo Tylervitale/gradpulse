@@ -73,6 +73,14 @@ class HardwarePanel(QWidget):
         self.hw_report_btn.clicked.connect(self.hardware_readiness)
         braket_form.addRow("", self.hw_report_btn)
 
+        self.braket_rb_len_input = QLineEdit()
+        self.braket_rb_len_input.setPlaceholderText("e.g. 1, 2, 4")
+        braket_form.addRow("RB Lengths:", self.braket_rb_len_input)
+
+        self.braket_rb_btn = QPushButton("Generate Braket RB Circuit")
+        self.braket_rb_btn.clicked.connect(self.generate_braket_rb)
+        braket_form.addRow("", self.braket_rb_btn)
+
         braket_group.setLayout(braket_form)
         control_layout.addWidget(braket_group)
 
@@ -153,6 +161,38 @@ class HardwarePanel(QWidget):
             return "--- OpenPulse Readiness Report ---\n" + "\n".join(f"{k}: {v}" for k, v in report.items())
 
         worker = Worker(report_task)
+        worker.signals.result.connect(self.on_export_success)
+        worker.signals.error.connect(self.on_error)
+        self.threadpool.start(worker)
+
+    def generate_braket_rb(self):
+        def rb_task():
+            from gradpulse.braket_bridge import native_rb_sequences, to_braket_rb_circuit
+
+            raw_lens = self.braket_rb_len_input.text().strip()
+            if raw_lens:
+                try:
+                    lengths = tuple([int(x.strip()) for x in raw_lens.split(',')])
+                except:
+                    lengths = (1, 2, 4)
+            else:
+                lengths = (1, 2, 4)
+            n_seeds = 1
+
+            try:
+                seqs = native_rb_sequences(lengths, n_seeds, interleaved=True)
+                if not seqs:
+                    return "No sequences generated."
+
+                # Pick the first one to show as example
+                example_seq = seqs[0]
+                circuit = to_braket_rb_circuit(example_seq, qubits=(0, 1), verbatim=True)
+
+                return f"--- Example Braket RB Circuit (Length {lengths[0]}) ---\n\n{circuit}"
+            except Exception as e:
+                return f"Error generating Braket RB Circuit:\n{e}"
+
+        worker = Worker(rb_task)
         worker.signals.result.connect(self.on_export_success)
         worker.signals.error.connect(self.on_error)
         self.threadpool.start(worker)
