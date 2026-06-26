@@ -51,22 +51,17 @@ class AnalysisPanel(QWidget):
         self.init_val_tab()
         self.tabs.addTab(self.val_tab, "Validation & Plotting")
 
-        # 2. Randomized Benchmarking Tab
-        self.rb_tab = QWidget()
-        self.init_rb_tab()
-        self.tabs.addTab(self.rb_tab, "Randomized Benchmarking")
-
-        # 3. Head-to-Head Tab
+        # 2. Head-to-Head Tab
         self.h2h_tab = QWidget()
         self.init_h2h_tab()
         self.tabs.addTab(self.h2h_tab, "Head-to-Head")
 
-        # 4. Advanced Diagnostics Tab
+        # 3. Advanced Diagnostics Tab
         self.adv_diag_tab = QWidget()
         self.init_adv_diag_tab()
         self.tabs.addTab(self.adv_diag_tab, "Advanced Diagnostics")
 
-        # 5. Literature Validation Tab
+        # 4. Literature Validation Tab
         self.lit_tab = QWidget()
         self.init_lit_tab()
         self.tabs.addTab(self.lit_tab, "Literature Validation")
@@ -116,7 +111,7 @@ class AnalysisPanel(QWidget):
         plot_group = QGroupBox("Plot Options")
         plot_layout = QVBoxLayout()
         self.plot_combo = QComboBox()
-        self.plot_combo.addItems(["Error Budget", "Robustness Sweep", "Pulse Spectrogram", "State Heatmap", "Bloch Trajectory"])
+        self.plot_combo.addItems(["Error Budget", "Robustness Sweep"])
         self.plot_btn = QPushButton("Generate Plot")
         self.plot_btn.clicked.connect(self.generate_plot)
         self.plot_btn.setEnabled(False)
@@ -138,40 +133,6 @@ class AnalysisPanel(QWidget):
         splitter.addWidget(control_widget)
         splitter.addWidget(self.plot_widget)
         splitter.setSizes([400, 600])
-
-        layout.addWidget(splitter)
-
-    def init_rb_tab(self):
-        layout = QVBoxLayout(self.rb_tab)
-
-        splitter = QSplitter(Qt.Orientation.Horizontal)
-
-        control_widget = QWidget()
-        control_layout = QVBoxLayout(control_widget)
-        control_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
-
-        rb_group = QGroupBox("Interleaved RB Settings")
-        rb_form = QFormLayout()
-
-        self.rb_sequences = QSpinBox()
-        self.rb_sequences.setRange(10, 1000)
-        self.rb_sequences.setValue(40)
-        rb_form.addRow("Sequences:", self.rb_sequences)
-
-        self.run_rb_btn = QPushButton("Run Simulated IRB")
-        self.run_rb_btn.clicked.connect(self.run_rb)
-        rb_form.addRow("", self.run_rb_btn)
-
-        rb_group.setLayout(rb_form)
-        control_layout.addWidget(rb_group)
-
-        self.rb_output = QTextEdit()
-        self.rb_output.setReadOnly(True)
-        self.rb_output.setStyleSheet("background-color: #1e1e1e; color: #d4d4d4; font-family: monospace;")
-
-        splitter.addWidget(control_widget)
-        splitter.addWidget(self.rb_output)
-        splitter.setSizes([300, 700])
 
         layout.addWidget(splitter)
 
@@ -365,49 +326,11 @@ class AnalysisPanel(QWidget):
                 return "budget", optimizer.error_budget(raw_param)
             elif plot_type == "Robustness Sweep":
                 return "robustness", optimizer.robustness_sweep(raw_param)
-            elif plot_type == "Pulse Spectrogram":
-                from gradpulse.viz import plot_spectrogram
-                return "spectrogram", result['best_waveform']
-            elif plot_type == "State Heatmap":
-                # Assuming state heatmap uses result directly or needs a specific eval
-                return "state_heatmap", result
-            elif plot_type == "Bloch Trajectory":
-                return "bloch_trajectory", result
 
         worker = Worker(plot_task)
         worker.signals.result.connect(self.on_plot_success)
         worker.signals.error.connect(self.on_error)
         worker.signals.finished.connect(lambda: self._reset_btn(self.plot_btn, "Generate Plot"))
-
-        self.threadpool.start(worker)
-
-    def run_rb(self):
-        self.run_rb_btn.setEnabled(False)
-        self.run_rb_btn.setText("Running...")
-        self.rb_output.clear()
-
-        n_seq = self.rb_sequences.value()
-
-        def rb_task():
-            opt_panel = self.main_window.opt_panel
-            if not opt_panel.result or 'best_waveform' not in opt_panel.result:
-                raise ValueError("No active optimization result found. Please run an optimization first.")
-            result = opt_panel.result
-            if 'optimizer' not in result:
-                raise ValueError("Optimization result missing 'optimizer' key.")
-
-            opt = result['optimizer']
-            raw_param = result['best_raw_param']
-
-            # Use gradpulse.rb to calculate the superoperator and run IRB
-            sup = gate_superoperator(opt, raw_param)
-            rb_res = interleaved_rb(sup, n_sequences=n_seq)
-            return rb_res
-
-        worker = Worker(rb_task)
-        worker.signals.result.connect(self.on_rb_success)
-        worker.signals.error.connect(self.on_error)
-        worker.signals.finished.connect(lambda: self._reset_btn(self.run_rb_btn, "Run Simulated IRB"))
 
         self.threadpool.start(worker)
 
@@ -505,23 +428,8 @@ class AnalysisPanel(QWidget):
             fig = plot_robustness(data)
             self.plot_widget.canvas.fig = fig
             self.plot_widget.canvas.draw()
-        elif ptype == "spectrogram":
-            from gradpulse.viz import plot_spectrogram
-            plot_spectrogram(data, ax=self.plot_widget.get_axes())
-        elif ptype == "state_heatmap":
-            plot_state_heatmap(data, ax=self.plot_widget.get_axes())
-        elif ptype == "bloch_trajectory":
-            plot_bloch_trajectory(data, ax=self.plot_widget.get_axes())
 
         self.plot_widget.canvas.draw()
-
-    def on_rb_success(self, rb_res):
-        text = "--- IRB Results ---\n"
-        text += f"Naive CZ Error: {rb_res.get('r_cz_naive', 'N/A')}\n"
-        text += f"Leakage-Aware CZ Error: {rb_res.get('r_cz_leakage_aware', 'N/A')}\n"
-        text += f"CZ Fidelity (IRB): {rb_res.get('f_cz_irb', 'N/A')}\n"
-        text += f"Leakage/Clifford (L1): {rb_res.get('leakage_per_clifford_L1', 'N/A')}\n"
-        self.rb_output.setPlainText(text)
 
     def on_h2h_success(self, h2h_res):
         summary = h2h_res.get('summary', {})
