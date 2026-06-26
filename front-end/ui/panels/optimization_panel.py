@@ -1,3 +1,4 @@
+"""Optimization Panel for gradpulse GUI."""
 import json
 import os
 from PyQt6.QtWidgets import (
@@ -8,12 +9,13 @@ from PyQt6.QtCore import Qt
 
 from ui.components.mpl_widget import MatplotlibWidget
 from core.worker import Worker
-from gradpulse import optimize_cz, optimize_iswap, tunable_coupler_cz, ParametricCouplerProfile, CrossResonanceZXOptimizer, MultiQubitOptimizer, ParametricCZOptimizer
+from gradpulse import optimize_cz, optimize_iswap, tunable_coupler_cz, ParametricCouplerProfile, CrossResonanceZXOptimizer, MultiQubitOptimizer, ParametricCZOptimizer, ActiveCancellationOptimizer, ParametricActiveCancellationOptimizer
 from gradpulse.crossresonance import CrossResonanceProfile
 from gradpulse.multiqubit import MultiQubitProfile
 from gradpulse.viz import plot_pulse, plot_convergence
 
 class OptimizationPanel(QWidget):
+    """Optimization Panel to configure and run pulse optimizations."""
     def __init__(self, main_window):
         super().__init__()
         self.main_window = main_window
@@ -63,7 +65,7 @@ class OptimizationPanel(QWidget):
         opt_form = QFormLayout()
 
         self.gate_combo = QComboBox()
-        self.gate_combo.addItems(["Parametric CZ", "iSWAP", "Tunable Coupler CZ", "Cross-Resonance ZX", "N-Qubit CZ"])
+        self.gate_combo.addItems(["Parametric CZ", "iSWAP", "Tunable Coupler CZ", "Cross-Resonance ZX", "N-Qubit CZ", "Active Cancellation CZ"])
         opt_form.addRow("Target Gate:", self.gate_combo)
 
         self.spectral_check = QCheckBox("Spectral (CRAB/Fourier) Mode")
@@ -273,6 +275,13 @@ class OptimizationPanel(QWidget):
                 elif gate == "N-Qubit CZ":
                     opt = MultiQubitOptimizer(profile=profile, target_gate="cz", target_qubits=(0,1), use_drag=use_drag)
                     return opt.optimize(n_slices=n_slices, iterations=iterations, n_seeds=n_seeds, fidelity=fidelity_mode, checkpoint_segments=checkpoints)
+                elif gate == "Active Cancellation CZ":
+                    if isinstance(profile, ParametricCouplerProfile):
+                        opt = ParametricActiveCancellationOptimizer(profile=profile, target_gate="cz", n_channels=n_channels, coupler_phase_mode=coupler_mode, use_drag=use_drag)
+                        return opt.optimize_multi_seed(n_slices=n_slices, iterations=iterations, n_seeds=n_seeds, diss_scale=diss_scale, robust_dephasing_sigma_mhz=r_deph, robust_filter_sigma_mhz=r_filter, checkpoint_segments=checkpoints)
+                    else:
+                        opt = ActiveCancellationOptimizer(profile=profile, target_gate="cz", target_qubits=(0,1), use_drag=use_drag)
+                        return opt.optimize(n_slices=n_slices, iterations=iterations, n_seeds=n_seeds, fidelity=fidelity_mode, checkpoint_segments=checkpoints)
 
         worker = Worker(opt_task)
         worker.signals.result.connect(self.on_optimization_success)
