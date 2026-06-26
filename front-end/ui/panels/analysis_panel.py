@@ -2,7 +2,7 @@ import os
 import json
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
-    QComboBox, QFormLayout, QGroupBox, QFileDialog, QDoubleSpinBox, QSplitter, QTabWidget, QTextEdit, QSpinBox
+    QComboBox, QFormLayout, QGroupBox, QFileDialog, QDoubleSpinBox, QSplitter, QTabWidget, QTextEdit, QSpinBox, QLineEdit
 )
 from PyQt6.QtCore import Qt
 
@@ -93,6 +93,11 @@ class AnalysisPanel(QWidget):
         # Analysis Actions
         actions_group = QGroupBox("Analysis Actions")
         actions_layout = QVBoxLayout()
+
+        self.ptm_btn = QPushButton("Calculate Pauli Transfer Matrix & Unitarity")
+        self.ptm_btn.clicked.connect(self.run_ptm_unitarity)
+        self.ptm_btn.setEnabled(False)
+        actions_layout.addWidget(self.ptm_btn)
 
         self.validate_btn = QPushButton("Run QuTiP Cross-Check")
         self.validate_btn.clicked.connect(self.run_validation)
@@ -193,8 +198,13 @@ class AnalysisPanel(QWidget):
         diag_form = QFormLayout()
 
         self.diag_combo = QComboBox()
-        self.diag_combo.addItems(["Quasi-Static Fidelity", "Colored Noise Fidelity", "Spectator Fidelity", "TLS Defect Fidelity"])
+        self.diag_combo.addItems(["Quasi-Static Fidelity", "Colored Noise Fidelity", "Spectator Fidelity", "TLS Defect Fidelity", "Filter Function", "Multi-Spectator Fidelity"])
         diag_form.addRow("Diagnostic:", self.diag_combo)
+
+        self.multi_spec_input = QLineEdit()
+        self.multi_spec_input.setPlaceholderText("e.g. 1,0.1,0.5;0,0.2,0.0")
+        self.multi_spec_input.setToolTip("Format: qubit,zeta_mhz,pop;qubit,zeta_mhz,pop")
+        diag_form.addRow("Neighbours (Multi-Spectator):", self.multi_spec_input)
 
         self.run_diag_btn = QPushButton("Run Diagnostic")
         self.run_diag_btn.clicked.connect(self.run_diagnostic)
@@ -262,6 +272,40 @@ class AnalysisPanel(QWidget):
             self.validate_btn.setEnabled(True)
             self.liouville_btn.setEnabled(True)
             self.plot_btn.setEnabled(True)
+            self.ptm_btn.setEnabled(True)
+
+    def run_ptm_unitarity(self):
+        self.ptm_btn.setEnabled(False)
+        self.ptm_btn.setText("Running...")
+
+        def ptm_task():
+            if not self.pulse_data:
+                raise ValueError("No pulse loaded.")
+
+            # Use optimizer from optimization tab to calculate PTM if available
+            opt_panel = self.main_window.opt_panel
+            if opt_panel.result and 'optimizer' in opt_panel.result:
+                opt = opt_panel.result['optimizer']
+                raw_param = opt_panel.result.get('best_raw_param', None)
+                res = opt.error_budget(raw_param)
+                # Unitarity is already in error budget, but we can do PTM too
+                return "Unitarity calculated", res.get('unitarity')
+            else:
+                return "Error", "No active optimization run to calculate PTM from. Please run optimization first."
+
+        worker = Worker(ptm_task)
+        worker.signals.result.connect(self.on_ptm_success)
+        worker.signals.error.connect(self.on_error)
+        worker.signals.finished.connect(lambda: self._reset_btn(self.ptm_btn, "Calculate Pauli Transfer Matrix & Unitarity"))
+
+        self.threadpool.start(worker)
+
+    def on_ptm_success(self, res):
+        msg, val = res
+        text = "--- PTM & Unitarity ---\n"
+        text += f"{msg}: {val}\n"
+        self.val_output.setPlainText(text)
+        print(text)
 
     def run_validation(self):
         self.validate_btn.setEnabled(False)
@@ -388,6 +432,20 @@ class AnalysisPanel(QWidget):
                 return diag_type, opt.spectator_fidelity(raw_param)
             elif diag_type == "TLS Defect Fidelity":
                 return diag_type, opt.tls_defect_fidelity(raw_param)
+            elif diag_type == "Filter Function":
+                return diag_type, opt.filter_function(raw_param)
+            elif diag_type == "Multi-Spectator Fidelity":
+                # Parse neighbours string
+                raw_str = self.multi_spec_input.text().strip()
+                neighbours = []
+                if raw_str:
+                    for item in raw_str.split(";"):
+                        parts = item.split(",")
+                        if len(parts) == 3:
+                            neighbours.append((int(parts[0]), float(parts[1]), float(parts[2])))
+                if not neighbours:
+                    neighbours = [(1, 0.1, 0.5), (0, 0.2, 0.0)]
+                return diag_type, opt.multi_spectator_fidelity(raw_param, neighbours)
 
         worker = Worker(diag_task)
         worker.signals.result.connect(self.on_diag_success)

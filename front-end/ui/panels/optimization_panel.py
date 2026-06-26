@@ -91,7 +91,47 @@ class OptimizationPanel(QWidget):
         opt_group.setLayout(opt_form)
         control_layout.addWidget(opt_group)
 
-        # 3. Actions
+        # 3. Advanced / Robust Settings
+        robust_group = QGroupBox("Robust Settings & Overrides")
+        robust_form = QFormLayout()
+
+        self.diss_scale_spin = QDoubleSpinBox()
+        self.diss_scale_spin.setRange(0.0, 1.0)
+        self.diss_scale_spin.setValue(1.0)
+        self.diss_scale_spin.setSingleStep(0.1)
+        robust_form.addRow("Dissipation Scale:", self.diss_scale_spin)
+
+        self.robust_deph_spin = QDoubleSpinBox()
+        self.robust_deph_spin.setRange(0.0, 10.0)
+        self.robust_deph_spin.setValue(0.0)
+        robust_form.addRow("Robust Dephasing (MHz):", self.robust_deph_spin)
+
+        self.robust_filter_spin = QDoubleSpinBox()
+        self.robust_filter_spin.setRange(0.0, 10.0)
+        self.robust_filter_spin.setValue(0.0)
+        robust_form.addRow("Robust Filter (MHz):", self.robust_filter_spin)
+
+        self.n_channels_combo = QComboBox()
+        self.n_channels_combo.addItems(["3", "4", "6"])
+        self.n_channels_combo.setCurrentText("3")
+        robust_form.addRow("Channels (Parametric):", self.n_channels_combo)
+
+        self.coupler_phase_combo = QComboBox()
+        self.coupler_phase_combo.addItems(["phase", "frequency"])
+        robust_form.addRow("Coupler Phase Mode:", self.coupler_phase_combo)
+
+        self.use_drag_check = QCheckBox("Use DRAG (CR / Parametric)")
+        robust_form.addRow("", self.use_drag_check)
+
+        self.checkpoint_spin = QSpinBox()
+        self.checkpoint_spin.setRange(0, 100)
+        self.checkpoint_spin.setValue(0)
+        robust_form.addRow("Checkpoint Segments:", self.checkpoint_spin)
+
+        robust_group.setLayout(robust_form)
+        control_layout.addWidget(robust_group)
+
+        # 4. Actions
         self.run_btn = QPushButton("Run Optimization")
         self.run_btn.setStyleSheet("background-color: #007acc; color: white; padding: 10px; font-weight: bold;")
         self.run_btn.clicked.connect(self.run_optimization)
@@ -182,6 +222,15 @@ class OptimizationPanel(QWidget):
         t1 = self.t1_spin.value()
         t2 = self.t2_spin.value()
 
+        # Advanced inputs
+        diss_scale = self.diss_scale_spin.value()
+        r_deph = self.robust_deph_spin.value()
+        r_filter = self.robust_filter_spin.value()
+        n_channels = int(self.n_channels_combo.currentText())
+        coupler_mode = self.coupler_phase_combo.currentText()
+        use_drag = self.use_drag_check.isChecked()
+        checkpoints = self.checkpoint_spin.value()
+
         use_preset = self.preset_combo.currentText()
         if use_preset == "Loaded from JSON" and self.loaded_profile:
             profile = self.loaded_profile
@@ -198,30 +247,32 @@ class OptimizationPanel(QWidget):
         def opt_task():
             if spectral:
                 if "Cross-Resonance" in gate:
-                    opt = CrossResonanceZXOptimizer(profile=profile)
+                    opt = CrossResonanceZXOptimizer(profile=profile, use_drag=use_drag)
                     return opt.optimize_spectral(n_slices=n_slices, iterations=iterations, n_seeds=n_seeds)
                 elif "N-Qubit" in gate:
                     # N-Qubit does not support spectral mode, fallback to standard or raise error
-                    opt = MultiQubitOptimizer(profile=profile, target_gate="cz", target_qubits=(0,1))
-                    return opt.optimize(n_slices=n_slices, iterations=iterations, n_seeds=n_seeds, fidelity=fidelity_mode)
+                    opt = MultiQubitOptimizer(profile=profile, target_gate="cz", target_qubits=(0,1), use_drag=use_drag)
+                    return opt.optimize(n_slices=n_slices, iterations=iterations, n_seeds=n_seeds, fidelity=fidelity_mode, checkpoint_segments=checkpoints)
                 else:
                     target = "cz" if "CZ" in gate else ("iswap" if "iSWAP" in gate else "cz")
-                    opt = ParametricCZOptimizer(profile=profile, target_gate=target)
+                    opt = ParametricCZOptimizer(profile=profile, target_gate=target, n_channels=n_channels, coupler_phase_mode=coupler_mode, use_drag=use_drag)
                     return opt.optimize_spectral(n_slices=n_slices, iterations=iterations, n_seeds=n_seeds)
             else:
                 if gate == "Parametric CZ":
-                    return optimize_cz(profile=profile, n_slices=n_slices, iterations=iterations, n_seeds=n_seeds)
+                    opt = ParametricCZOptimizer(profile=profile, target_gate="cz", n_channels=n_channels, coupler_phase_mode=coupler_mode, use_drag=use_drag)
+                    return opt.optimize_multi_seed(n_slices=n_slices, iterations=iterations, n_seeds=n_seeds, diss_scale=diss_scale, robust_dephasing_sigma_mhz=r_deph, robust_filter_sigma_mhz=r_filter, checkpoint_segments=checkpoints)
                 elif gate == "iSWAP":
-                    return optimize_iswap(profile=profile, n_slices=n_slices, iterations=iterations, n_seeds=n_seeds)
+                    opt = ParametricCZOptimizer(profile=profile, target_gate="iswap", n_channels=n_channels, coupler_phase_mode=coupler_mode, use_drag=use_drag)
+                    return opt.optimize_multi_seed(n_slices=n_slices, iterations=iterations, n_seeds=n_seeds, diss_scale=diss_scale, robust_dephasing_sigma_mhz=r_deph, robust_filter_sigma_mhz=r_filter, checkpoint_segments=checkpoints)
                 elif gate == "Tunable Coupler CZ":
-                    opt = tunable_coupler_cz(t1_ns=(t1, t1, t1), t2_ns=(t2, t2, t2))
-                    return opt.optimize(n_slices=n_slices, iterations=iterations, n_seeds=n_seeds)
+                    opt = tunable_coupler_cz(t1_ns=(t1, t1, t1), t2_ns=(t2, t2, t2), use_drag=use_drag)
+                    return opt.optimize(n_slices=n_slices, iterations=iterations, n_seeds=n_seeds, checkpoint_segments=checkpoints)
                 elif gate == "Cross-Resonance ZX":
-                    opt = CrossResonanceZXOptimizer(profile=profile)
-                    return opt.optimize(n_slices=n_slices, iterations=iterations, n_seeds=n_seeds)
+                    opt = CrossResonanceZXOptimizer(profile=profile, use_drag=use_drag)
+                    return opt.optimize(n_slices=n_slices, iterations=iterations, n_seeds=n_seeds, diss_scale=diss_scale)
                 elif gate == "N-Qubit CZ":
-                    opt = MultiQubitOptimizer(profile=profile, target_gate="cz", target_qubits=(0,1))
-                    return opt.optimize(n_slices=n_slices, iterations=iterations, n_seeds=n_seeds, fidelity=fidelity_mode)
+                    opt = MultiQubitOptimizer(profile=profile, target_gate="cz", target_qubits=(0,1), use_drag=use_drag)
+                    return opt.optimize(n_slices=n_slices, iterations=iterations, n_seeds=n_seeds, fidelity=fidelity_mode, checkpoint_segments=checkpoints)
 
         worker = Worker(opt_task)
         worker.signals.result.connect(self.on_optimization_success)
